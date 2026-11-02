@@ -17,7 +17,9 @@ COPY data ./data
 COPY tests ./tests
 
 # Never let pip replace the CUDA build of torch that ships in the base image.
-RUN pip freeze | grep -iE '^(torch|torchvision|torchaudio)==' > /tmp/constraints.txt \
+# (DLC wheels show up in `pip freeze` as "torch @ file://...", so read the versions instead.)
+COPY sagemaker/pin_torch.py /tmp/pin_torch.py
+RUN python /tmp/pin_torch.py > /tmp/constraints.txt \
  && cat /tmp/constraints.txt \
  && pip install --no-cache-dir -c /tmp/constraints.txt -e ".[analysis]" \
       "transformers>=4.44,<5" sentencepiece flask==3.0.3 gunicorn==22.0.0 \

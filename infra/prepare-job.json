@@ -1,0 +1,19 @@
+{
+  "ProcessingJobName": "pm-prepare-STAMP",
+  "RoleArn": "ROLE_ARN",
+  "AppSpecification": {
+    "ImageUri": "IMAGE_URI",
+    "ContainerEntrypoint": ["python", "/opt/program/sagemaker/entry/prepare.py"],
+    "ContainerArguments": ["--max-tokens", "16384", "--val-percent", "2", "--limit", "LIMIT"]
+  },
+  "ProcessingResources": {"ClusterConfig": {"InstanceCount": 2, "InstanceType": "ml.c5.2xlarge", "VolumeSizeInGB": 60}},
+  "ProcessingOutputConfig": {"Outputs": [
+    {"OutputName": "tokens", "S3Output": {"S3Uri": "s3://BUCKET/data/tokens/DATAVER/",
+      "LocalPath": "/opt/ml/processing/output/tokens", "S3UploadMode": "EndOfJob"}},
+    {"OutputName": "encoder", "S3Output": {"S3Uri": "s3://BUCKET/models/mt5-base-encoder/",
+      "LocalPath": "/opt/ml/processing/output/encoder", "S3UploadMode": "EndOfJob"}}
+  ]},
+  "StoppingCondition": {"MaxRuntimeInSeconds": 14400},
+  "Environment": {"PYTHONUNBUFFERED": "1"},
+  "Tags": [{"Key": "project", "Value": "promptmusic"}]
+}

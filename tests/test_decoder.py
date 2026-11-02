@@ -270,3 +270,18 @@ def test_sample_top_p_only_keeps_nucleus_tokens():
     torch.manual_seed(0)
     for _ in range(20):
         assert _sample(logits, temperature=1.0, top_p=0.5).item() in (3, 7)
+
+
+def test_bf16_memory_is_accepted_by_fp32_decoder():
+    """Regression: bf16 mT5 output crashed generation (no autocast there)."""
+    import torch
+
+    from promptmusic.model.decoder import MusicDecoder
+
+    dec = MusicDecoder(vocab_size=50, d_model=32, nhead=4, num_layers=1,
+                       dim_feedforward=64, text_dim=16, max_len=64)
+    ids = torch.randint(3, 50, (1, 8))
+    memory = torch.randn(1, 5, 16, dtype=torch.bfloat16)
+    out = dec(ids, memory)
+    logits = out[0] if isinstance(out, tuple) else out
+    assert logits.dtype == torch.float32

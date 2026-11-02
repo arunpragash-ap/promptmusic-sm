@@ -351,7 +351,9 @@ class MusicDecoder(nn.Module):
         x = self.pos_enc(x, offset=offset)
         x = self.emb_dropout(x)
 
-        mem = self.memory_proj(memory)
+        # The frozen encoder may run in bf16 (model.text_encoder.dtype); outside
+        # autocast (generation) its output must match the decoder's weights.
+        mem = self.memory_proj(memory.to(self.memory_proj.weight.dtype))
         if hasattr(self.memory_norm, "weight"):
             mem = self.memory_norm(mem)
 

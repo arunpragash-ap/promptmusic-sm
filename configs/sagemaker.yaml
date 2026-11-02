@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# sagemaker.yaml - training on one NVIDIA A10G (ml.g5.xlarge, 24 GB)
+# Smoke runs reuse this file and pass overrides as SageMaker hyperparameters
+# (e.g. train.max_steps=200); see infra/train-smoke.json.
+# ---------------------------------------------------------------------------
+project:
+  name: prompt_music_gen
+  seed: 42
+data:
+  limit: null
+  token_dir: /opt/ml/input/data/train      # SageMaker "train" channel (token shards)
+tokenizer:
+  max_tokens: 2560                         # = generation length (no extrapolation)
+model:
+  text_encoder:
+    name: google/mt5-base                  # logical name; PROMPTMUSIC_TEXT_ENCODER gives the path
+    dtype: bfloat16
+    max_length: 128
+  decoder:
+    max_len: 4096
+train:
+  epochs: 3
+  batch_size: 8
+  grad_accum: 2
+  lr: 3.0e-4
+  num_workers: 4
+  bf16: true
+  log_every: 50
+  val_every: 1000
+  val_max_batches: 50
+  save_every: 500
+  device: cuda
+generate:
+  max_new_tokens: 2400
+  temperature: 0.95
+  top_p: 0.92

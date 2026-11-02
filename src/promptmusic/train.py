@@ -1,0 +1,538 @@
+"""Training the model.
+
+What actually happens in one training step
+------------------------------------------
+1. **Tokenise the prompts.** A batch of caption strings goes through the mT5
+   SentencePiece tokenizer, producing ``input_ids`` of shape ``[B, T_text]``.
+2. **Encode the prompts.** The *frozen* mT5 encoder turns those ids into a
+   matrix of vectors, ``memory`` of shape ``[B, T_text, 768]``. This happens
+   under ``torch.no_grad()``, so it costs memory but no gradients.
+3. **Teacher forcing.** The music token sequence ``[BOS, t1, ..., tN, EOS]``
+   is fed to the decoder with its last token removed; the decoder predicts
+   every *next* token in one parallel pass.
+4. **Cross-entropy loss.** Compare the predicted distribution at each position
+   with the token that actually follows, ignoring padded positions.
+5. **Backpropagate** through the decoder only, clip the gradient, and take an
+   AdamW step with a warmup-then-cosine learning rate.
+
+Memory notes for an 8 GB Apple M2
+---------------------------------
+The frozen encoder is ~295 M parameters (~1.2 GB in float32) and is the single
+biggest consumer. The decoder is ~60 M parameters (~240 MB) plus its AdamW
+moments (~480 MB). Everything else is activations. The defaults here
+(``batch_size=8``, ``max_tokens=1024``, ``num_workers=0``) fit with headroom.
+If you run out of memory, lower ``train.batch_size`` and raise
+``train.grad_accum`` by the same factor to keep the effective batch size.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import csv
+import math
+import time
+from pathlib import Path
+from typing import Any
+
+import torch
+from torch.utils.data import DataLoader
+
+from .config import Config, load_config
+from .data.dataset import (
+    MusicDataset,
+    build_tokenized_dataset,
+    collate_fn,
+    split_examples,
+)
+from .data.tokenizer import build_tokenizer
+from .model.build import build_model, count_parameters, load_checkpoint, save_checkpoint
+from .model.text_encoder import TextTokenizer
+from .paths import OUTPUTS_DIR, ensure_dir
+from .utils import format_duration, logger, select_device, set_seed
+
+LOG = logger("promptmusic.train")
+
+__all__ = ["train", "TrainLogger", "make_scheduler"]
+
+
+# --------------------------------------------------------------------------- #
+# CSV logging
+# --------------------------------------------------------------------------- #
+class TrainLogger:
+    """Append-only CSV logger.
+
+    A CSV file is deliberately boring: it opens in a spreadsheet, it plots in
+    three lines of matplotlib, and it survives a crash because every row is
+    flushed as soon as it is written.
+    """
+
+    FIELDS = [
+        "step", "epoch", "split", "loss", "perplexity", "lr",
+        "tokens_per_sec", "elapsed_sec", "grad_norm",
+    ]
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not self.path.exists() or self.path.stat().st_size == 0
+        self._fh = open(self.path, "a", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(self._fh, fieldnames=self.FIELDS, extrasaction="ignore")
+        if write_header:
+            self._writer.writeheader()
+            self._fh.flush()
+
+    def log(self, **row: Any) -> None:
+        self._writer.writerow(row)
+        self._fh.flush()
+
+    def close(self) -> None:
+        try:
+            self._fh.close()
+        except Exception:  # pragma: no cover - already closed
+            pass
+
+
+# --------------------------------------------------------------------------- #
+# Optimiser / scheduler
+# --------------------------------------------------------------------------- #
+def _split_params(model: torch.nn.Module) -> tuple[list[torch.nn.Parameter], list[torch.nn.Parameter]]:
+    """Separate weights from biases/norms so weight decay is applied fairly.
+
+    Standard practice: decay the matrices, leave the biases and the LayerNorm
+    gains alone. Decaying a normalisation gain pushes it towards zero, which
+    quietly damages the network.
+    """
+    decay, no_decay = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim < 2 or name.endswith(".bias") or "norm" in name.lower():
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return decay, no_decay
+
+
+def make_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> torch.optim.Optimizer:
+    decay, no_decay = _split_params(model)
+    groups = [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+    return torch.optim.AdamW(groups, lr=lr, betas=(0.9, 0.95), eps=1e-8)
+
+
+def make_scheduler(
+    optimizer: torch.optim.Optimizer,
+    num_warmup: int,
+    num_training: int,
+    min_lr_ratio: float = 0.05,
+) -> torch.optim.lr_scheduler.LambdaLR:
+    """Linear warmup followed by a cosine decay to ``min_lr_ratio * lr``.
+
+    Warmup matters because at step 0 the decoder's weights are random and a
+    full-sized update would destroy whatever structure the initialisation
+    gave it. Cosine decay then lets the model settle into a minimum.
+    """
+
+    def lr_lambda(step: int) -> float:
+        if num_warmup > 0 and step < num_warmup:
+            return (step + 1) / num_warmup
+        if num_training <= num_warmup:
+            return 1.0
+        progress = (step - num_warmup) / max(1, num_training - num_warmup)
+        progress = min(max(progress, 0.0), 1.0)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+        return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+
+# --------------------------------------------------------------------------- #
+# The trainer
+# --------------------------------------------------------------------------- #
+def restore_resume_weights(
+    model: Any, state: dict[str, Any], resume: str | Path
+) -> tuple[bool, list[str], list[str]]:
+    """Load a checkpoint's weights into ``model``, refusing silent resets.
+
+    Checkpoints written by :func:`save_checkpoint` store the **full**
+    ``MusicModel`` state dict (keys prefixed ``decoder.`` and
+    ``text_encoder.``). Loading that into ``model.decoder`` matches no key at
+    all and, with ``strict=False``, silently leaves the decoder at random
+    init - i.e. resuming would throw away every trained weight. Older
+    checkpoints store only the decoder.
+
+    Returns ``(full_checkpoint, missing, unexpected)``; raises
+    :class:`RuntimeError` when decoder tensors are missing.
+    """
+    full_checkpoint = any(k.startswith("decoder.") for k in state)
+    target = model if full_checkpoint else model.decoder
+    missing, unexpected = target.load_state_dict(state, strict=False)
+    decoder_missing = [k for k in missing if "decoder." in k or not full_checkpoint]
+    if decoder_missing:
+        raise RuntimeError(
+            f"resume checkpoint {resume} is missing {len(decoder_missing)} "
+            f"model tensors (e.g. {decoder_missing[:3]}); refusing to "
+            "resume from randomly initialised weights"
+        )
+    return full_checkpoint, list(missing), list(unexpected)
+
+
+def train(
+    config: Config | str | Path | None = None,
+    *,
+    overrides: list[str] | None = None,
+    run_name: str | None = None,
+) -> dict[str, Any]:
+    """Train the model and return a summary dict.
+
+    Args:
+        config: a :class:`~promptmusic.config.Config`, a config name
+            (``"smoke"``, ``"default"``) or a path to a YAML file.
+        overrides: ``key.path=value`` strings applied on top of the config.
+        run_name: subdirectory of ``outputs/`` for this run's artefacts.
+    """
+    if not isinstance(config, Config):
+        cfg = load_config(config, overrides)
+    else:
+        cfg = config
+        cfg.apply_overrides(overrides)
+
+    tcfg = cfg.section("train")
+    run_name = run_name or cfg.get("project.name", "prompt_music_gen")
+    run_dir = ensure_dir(Path(cfg.get("paths.output_dir", OUTPUTS_DIR)) / run_name)
+    ckpt_dir = ensure_dir(run_dir / "checkpoints")
+    log_path = run_dir / "train_log.csv"
+
+    set_seed(int(cfg.get("project.seed", 42)), bool(cfg.get("project.deterministic", False)))
+
+    device = select_device(tcfg.get("device", "auto"))
+    LOG.info("device: %s", device)
+    if device == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    use_bf16 = (
+        device == "cuda" and bool(tcfg.get("bf16", True)) and torch.cuda.is_bf16_supported()
+    )
+    autocast = (
+        (lambda: torch.autocast("cuda", dtype=torch.bfloat16)) if use_bf16 else contextlib.nullcontext
+    )
+    LOG.info("mixed precision: %s", "bf16" if use_bf16 else "fp32")
+    if device == "mps":
+        LOG.info("Apple MPS selected - float64 and some ops are unavailable on this device")
+
+    # --- data ------------------------------------------------------------- #
+    tok_cfg = cfg.section("tokenizer")
+    languages = cfg.get("data.languages", ["en"]) or ["en"]
+    language = "ta" if "ta" in languages and cfg.get("data.use_tamil_for_training") else "en"
+
+    music_tokenizer = build_tokenizer(tok_cfg)
+    vocab_size = music_tokenizer.vocab_size
+    LOG.info("music vocabulary: %d tokens", vocab_size)
+
+    token_dir = cfg.get("data.token_dir")
+    examples = [] if token_dir else build_tokenized_dataset(
+        cfg, music_tokenizer, language=language, limit=cfg.get("data.limit")
+    )
+    if not examples and not token_dir:
+        raise RuntimeError(
+            "no training examples were built. Did the MIDI files download and extract?\n"
+            "Try:  promptmusic download --source midicaps"
+        )
+    train_examples, val_examples = [], []
+    if not token_dir:
+        train_examples, val_examples = split_examples(
+        examples,
+        val_fraction=float(cfg.get("data.val_fraction", 0.05)),
+        seed=int(cfg.get("project.seed", 42)),
+    )
+
+    max_tokens = int(tok_cfg.get("max_tokens", 4096))
+    pad_id, bos_id, eos_id = 0, 1, 2
+
+    def _make_loader(rows, shuffle: bool) -> DataLoader:
+        ds = MusicDataset(rows, max_tokens=max_tokens)
+        return DataLoader(
+            ds,
+            batch_size=int(tcfg.get("batch_size", 8)),
+            shuffle=shuffle,
+            num_workers=int(tcfg.get("num_workers", 0)),
+            collate_fn=lambda b: collate_fn(
+                b, bos_id=bos_id, eos_id=eos_id, pad_id=pad_id, max_tokens=max_tokens
+            ),
+            drop_last=False,
+        )
+
+    if token_dir:
+        # SageMaker path: uint16 memmap shards + random bar-aligned windows.
+        from .data.shards import TokenShardDataset
+
+        window = max_tokens - 2                       # room for BOS/EOS
+        bar_id = music_tokenizer.vocab.get("Bar_None")
+        train_ds = TokenShardDataset(token_dir, "train", window, bar_id)
+        val_ds = TokenShardDataset(token_dir, "val", window, random_crop=False)
+        workers = int(tcfg.get("num_workers", 0))
+
+        def _collate(b):
+            return collate_fn(b, bos_id=bos_id, eos_id=eos_id, pad_id=pad_id, max_tokens=max_tokens)
+
+        train_loader = DataLoader(
+            train_ds, batch_size=int(tcfg.get("batch_size", 8)), shuffle=True,
+            num_workers=workers, collate_fn=_collate, pin_memory=device == "cuda",
+            persistent_workers=workers > 0, drop_last=True,
+        )
+        val_loader = DataLoader(
+            val_ds, batch_size=int(tcfg.get("batch_size", 8)), shuffle=False,
+            num_workers=0, collate_fn=_collate,
+        ) if len(val_ds) else None
+        train_examples, val_examples = train_ds.items, val_ds.items
+        LOG.info("token shards: %d train / %d val pieces", len(train_ds), len(val_ds))
+    else:
+        train_loader = _make_loader(train_examples, shuffle=True)
+        val_loader = _make_loader(val_examples, shuffle=False) if val_examples else None
+    val_max_batches = tcfg.get("val_max_batches")
+
+    # --- model ------------------------------------------------------------ #
+    model = build_model(
+        cfg,
+        vocab_size=vocab_size,
+        pad_id=pad_id,
+        bos_id=bos_id,
+        eos_id=eos_id,
+        device=device,
+    )
+    n_total = count_parameters(model)
+    n_train = count_parameters(model, trainable_only=True)
+    LOG.info("parameters: %.1fM total, %.1fM trainable", n_total / 1e6, n_train / 1e6)
+
+    text_tok = TextTokenizer(
+        model_name=cfg.get("model.text_encoder.name", "google/mt5-base"),
+        max_length=int(cfg.get("model.text_encoder.max_length", 128)),
+    )
+
+    # --- optimiser --------------------------------------------------------- #
+    epochs = int(tcfg.get("epochs", 3))
+    grad_accum = max(1, int(tcfg.get("grad_accum", 1)))
+    max_steps = tcfg.get("max_steps")
+    steps_per_epoch = math.ceil(len(train_loader) / grad_accum)
+    total_steps = steps_per_epoch * epochs
+    if max_steps:
+        total_steps = min(total_steps, int(max_steps))
+
+    optimizer = make_optimizer(
+        model, lr=float(tcfg.get("lr", 3e-4)), weight_decay=float(tcfg.get("weight_decay", 0.01))
+    )
+    warmup = int(total_steps * float(tcfg.get("warmup_ratio", 0.05)))
+    scheduler = make_scheduler(
+        optimizer, warmup, total_steps, float(tcfg.get("min_lr_ratio", 0.05))
+    )
+
+    # --- resume ------------------------------------------------------------ #
+    start_epoch, global_step, skip_batches = 0, 0, 0
+    best_val = float("inf")
+    resume = tcfg.get("resume")
+    if resume:
+        payload = load_checkpoint(resume, map_location=device)
+        state = payload["model_state"]
+        full_checkpoint, missing, unexpected = restore_resume_weights(model, state, resume)
+        LOG.info(
+            "resume weights: %s format, %d missing / %d unexpected tensors",
+            "full-model" if full_checkpoint else "decoder-only",
+            len(missing),
+            len(unexpected),
+        )
+        if "optimizer_state" in payload:
+            optimizer.load_state_dict(payload["optimizer_state"])
+        if "scheduler_state" in payload:
+            scheduler.load_state_dict(payload["scheduler_state"])
+        start_epoch = int(payload.get("epoch", 0))
+        # last.pt written mid-epoch records how far it got (spot restarts)
+        skip_batches = int(payload.get("batch_idx", -1)) + 1
+        global_step = int(payload.get("step", 0))
+        best_val = float(payload.get("metrics", {}).get("best_val_loss", best_val))
+        LOG.info("resumed from %s at epoch %d, step %d", resume, start_epoch, global_step)
+
+    logger_csv = TrainLogger(log_path)
+    max_grad_norm = float(tcfg.get("max_grad_norm", 1.0))
+    log_every = int(tcfg.get("log_every", 50))
+    val_every = int(tcfg.get("val_every", 500))
+    save_every = int(tcfg.get("save_every", 500))
+
+    model.train()
+    t_start = time.time()
+    history: list[dict[str, Any]] = []
+    stopped_early = False
+
+    LOG.info(
+        "training: %d epochs, %d steps total, batch=%d x grad_accum=%d (effective %d)",
+        epochs, total_steps, tcfg.get("batch_size", 8), grad_accum,
+        int(tcfg.get("batch_size", 8)) * grad_accum,
+    )
+
+    for epoch in range(start_epoch, epochs):
+        optimizer.zero_grad(set_to_none=True)
+        running_loss, running_examples, running_tokens = 0.0, 0, 0
+        epoch_start = time.time()
+
+        for batch_idx, batch in enumerate(train_loader):
+            if skip_batches and batch_idx < skip_batches:
+                continue
+            texts = batch["texts"]
+            enc = text_tok(texts)
+            input_ids = enc["input_ids"].to(device)
+            attention_mask = enc["attention_mask"].to(device)
+
+            music_ids = batch["music_ids"].to(device, non_blocking=True)
+            with autocast():
+                with torch.no_grad():
+                    memory = model.encode_prompt(input_ids, attention_mask)
+                loss, _ = model.loss(music_ids, memory, memory_mask=attention_mask)
+            (loss / grad_accum).backward()
+
+            running_loss += float(loss.detach()) * music_ids.size(0)
+            running_examples += music_ids.size(0)
+            running_tokens += int(batch["music_mask"].sum())
+
+            stepped = False
+            if (batch_idx + 1) % grad_accum == 0:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    (p for p in model.parameters() if p.requires_grad), max_grad_norm
+                )
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+                global_step += 1
+                stepped = True
+
+                if global_step % log_every == 0:
+                    # mean over examples since the LAST log line (was: / batch_idx+1,
+                    # which shrank the printed loss after the first log)
+                    avg = running_loss / max(1, running_examples)
+                    elapsed = time.time() - t_start
+                    row = {
+                        "step": global_step,
+                        "epoch": epoch,
+                        "split": "train",
+                        "loss": round(avg, 5),
+                        "perplexity": round(math.exp(min(avg, 20)), 3),
+                        "lr": f"{scheduler.get_last_lr()[0]:.3e}",
+                        "tokens_per_sec": round(running_tokens / max(elapsed, 1e-6), 1),
+                        "elapsed_sec": round(elapsed, 1),
+                        "grad_norm": round(float(grad_norm), 4),
+                    }
+                    logger_csv.log(**row)
+                    history.append(row)
+                    LOG.info(
+                        "epoch %d step %d/%d  loss %.4f  ppl %.1f  lr %.2e  %.0f tok/s",
+                        epoch, global_step, total_steps, avg, math.exp(min(avg, 20)),
+                        scheduler.get_last_lr()[0], running_tokens / max(elapsed, 1e-6),
+                    )
+                    running_loss, running_examples, running_tokens = 0.0, 0, 0
+                    t_start = time.time()
+
+                if val_loader is not None and global_step % val_every == 0:
+                    val_loss = _validate(model, val_loader, text_tok, device, autocast, val_max_batches)
+                    model.train()
+                    row = {"step": global_step, "epoch": epoch, "split": "val",
+                           "loss": round(val_loss, 5),
+                           "perplexity": round(math.exp(min(val_loss, 20)), 3)}
+                    logger_csv.log(**row)
+                    history.append(row)
+                    LOG.info("  validation loss %.4f (ppl %.1f)", val_loss, math.exp(min(val_loss, 20)))
+                    if val_loss < best_val:
+                        best_val = val_loss
+                        save_checkpoint(
+                            ckpt_dir / "best.pt", model, optimizer=optimizer, scheduler=scheduler,
+                            epoch=epoch, step=global_step,
+                            metrics={"val_loss": val_loss, "best_val_loss": best_val},
+                            config=cfg, vocab=music_tokenizer.vocab,
+                        )
+
+                if global_step % save_every == 0:
+                    save_checkpoint(
+                        ckpt_dir / "last.pt", model, optimizer=optimizer, scheduler=scheduler,
+                        epoch=epoch, step=global_step, metrics={"best_val_loss": best_val},
+                        config=cfg, vocab=music_tokenizer.vocab, extra={"batch_idx": batch_idx},
+                    )
+
+                if max_steps and global_step >= int(max_steps):
+                    stopped_early = True
+                    break
+
+        skip_batches = 0
+        epoch_time = time.time() - epoch_start
+        LOG.info("epoch %d finished in %s", epoch, format_duration(epoch_time))
+
+        if val_loader is not None:
+            val_loss = _validate(model, val_loader, text_tok, device, autocast, val_max_batches)
+            model.train()
+            row = {"step": global_step, "epoch": epoch, "split": "val",
+                   "loss": round(val_loss, 5), "perplexity": round(math.exp(min(val_loss, 20)), 3)}
+            logger_csv.log(**row)
+            history.append(row)
+            if val_loss < best_val:
+                best_val = val_loss
+                save_checkpoint(
+                    ckpt_dir / "best.pt", model, optimizer=optimizer, scheduler=scheduler,
+                    epoch=epoch, step=global_step,
+                    metrics={"val_loss": val_loss, "best_val_loss": best_val},
+                    config=cfg, vocab=music_tokenizer.vocab,
+                )
+
+        save_checkpoint(
+            ckpt_dir / "last.pt", model, optimizer=optimizer, scheduler=scheduler,
+            epoch=epoch + 1, step=global_step, metrics={"best_val_loss": best_val},
+            config=cfg, vocab=music_tokenizer.vocab,
+        )
+
+        if stopped_early:
+            LOG.info("reached max_steps=%d; stopping", max_steps)
+            break
+
+    logger_csv.close()
+
+    final_ckpt = ckpt_dir / ("best.pt" if (ckpt_dir / "best.pt").exists() else "last.pt")
+    summary = {
+        "run_dir": str(run_dir),
+        "checkpoint": str(final_ckpt),
+        "log": str(log_path),
+        "steps": global_step,
+        "epochs_run": epoch + 1 if "epoch" in dir() else 0,
+        "best_val_loss": best_val if best_val != float("inf") else None,
+        "train_examples": len(train_examples),
+        "val_examples": len(val_examples),
+        "vocab_size": vocab_size,
+        "params_total": n_total,
+        "params_trainable": n_train,
+        "device": device,
+        "wall_time_sec": round(time.time() - (t_start - epoch_time) if "epoch_time" in dir() else 0, 1),
+    }
+    LOG.info("training complete: %s", summary)
+    return summary
+
+
+# --------------------------------------------------------------------------- #
+# Validation
+# --------------------------------------------------------------------------- #
+@torch.no_grad()
+def _validate(model, loader, text_tok, device: str, autocast=None, max_batches=None) -> float:
+    """Mean cross-entropy over the validation set (optionally the first N batches)."""
+    import contextlib
+
+    autocast = autocast or contextlib.nullcontext
+    model.eval()
+    total, count = 0.0, 0
+    for i, batch in enumerate(loader):
+        if max_batches and i >= int(max_batches):
+            break
+        enc = text_tok(batch["texts"])
+        music_ids = batch["music_ids"].to(device)
+        with autocast():
+            memory = model.encode_prompt(
+                enc["input_ids"].to(device), enc["attention_mask"].to(device)
+            )
+            loss, _ = model.loss(music_ids, memory, memory_mask=enc["attention_mask"].to(device))
+        total += float(loss) * music_ids.size(0)
+        count += music_ids.size(0)
+    return total / max(count, 1)

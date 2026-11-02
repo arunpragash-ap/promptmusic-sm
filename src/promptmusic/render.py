@@ -282,12 +282,43 @@ def _backend_order(backend: str) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Individual backends
 # --------------------------------------------------------------------------- #
+def _with_release_tail(midi: Path, out: Path, tail_sec: float = 1.5) -> Path:
+    """Copy ``midi`` with every end_of_track moved ``tail_sec`` later.
+
+    Returns the original path if the file cannot be parsed (render anyway).
+    """
+    try:
+        import mido
+
+        mf = mido.MidiFile(str(midi))
+        tempo = 500000
+        for track in mf.tracks:
+            for msg in track:
+                if msg.type == "set_tempo":
+                    tempo = msg.tempo
+        ticks = int(mido.second2tick(tail_sec, mf.ticks_per_beat, tempo))
+        for track in mf.tracks:
+            if track and track[-1].type == "end_of_track":
+                track[-1].time += ticks
+            else:
+                track.append(mido.MetaMessage("end_of_track", time=ticks))
+        mf.save(str(out))
+        return out
+    except Exception:  # noqa: BLE001 - padding is cosmetic, never fatal
+        return midi
+
+
 def _render_fluidsynth(
     midi: Path, wav: Path, soundfont: Path, sample_rate: int, gain: float
 ) -> None:
     exe = which("fluidsynth") or which("fluid-synth")
     if not exe:
         raise RuntimeError("fluidsynth executable not on PATH (brew install fluid-synth)")
+
+    # fluidsynth <= 2.2 (Ubuntu 22.04, the SageMaker images) stops at the last
+    # MIDI event and cuts every release tail; 2.4+ (Homebrew) lets notes ring.
+    # Pushing end_of_track later makes both versions render the tail.
+    padded = _with_release_tail(midi, wav.with_suffix(".tail.mid"))
 
     cmd = [
         exe,
@@ -297,9 +328,11 @@ def _render_fluidsynth(
         "-g", str(max(0.0, min(gain, 1.0))),
         "-q",                        # quiet
         str(soundfont),
-        str(midi),
+        str(padded),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    if padded != midi:
+        padded.unlink(missing_ok=True)
     if proc.returncode != 0 or not wav.exists():
         raise RuntimeError(f"fluidsynth exited {proc.returncode}: {proc.stderr.strip()[:400]}")
 

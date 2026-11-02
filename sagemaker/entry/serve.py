@@ -31,6 +31,7 @@ os.environ.setdefault("PROMPTMUSIC_TEXT_ENCODER", str(MODEL_DIR / "encoder"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TOKENS_PER_SECOND = 40          # measured MidiCaps density
 MAX_SECONDS = 64                # 2560 training tokens / 40
+LYRICS_DIR = Path("/opt/program/data/lyrics")
 
 import promptmusic.generate as G  # noqa: E402
 from promptmusic.arrange import arrange_midi  # noqa: E402
@@ -55,6 +56,9 @@ def invocations():
     req = json.loads(request.get_data().decode("utf-8"))
     prompt = req["prompt"]
     lyrics = req.get("lyrics", "")
+    if not lyrics and req.get("lyrics_file"):           # a file baked into the image
+        name = Path(req["lyrics_file"]).name              # no path traversal
+        lyrics = (LYRICS_DIR / name).read_text(encoding="utf-8")
     language = req.get("language", "en")
     duration = min(float(req.get("duration", 45)), MAX_SECONDS)
     sing = bool(req.get("sing", bool(lyrics)))

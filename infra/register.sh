@@ -11,7 +11,7 @@ PKG=$(aws sagemaker create-model-package --model-package-group-name $PROJECT \
       \"Environment\":{\"PROMPTMUSIC_TEXT_ENCODER\":\"/opt/ml/model/encoder\"}}],
     \"SupportedContentTypes\":[\"application/json\"],
     \"SupportedResponseMIMETypes\":[\"application/zip\"],
-    \"SupportedRealtimeInferenceInstanceTypes\":[\"ml.g5.xlarge\"]}" \
+    \"SupportedRealtimeInferenceInstanceTypes\":[\"ml.g5.xlarge\",\"ml.g6.xlarge\",\"ml.g5.2xlarge\"]}" \
   --model-metrics "{\"ModelQuality\":{\"Statistics\":{\"ContentType\":\"application/json\",
     \"S3Uri\":\"s3://$BUCKET/eval/$JOB/evaluation.json\"}}}" --query ModelPackageArn --output text)
 aws sagemaker update-model-package --model-package-arn $PKG --model-approval-status Approved >/dev/null

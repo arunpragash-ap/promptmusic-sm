@@ -2,13 +2,13 @@
 # infra/deploy.sh <model-package-arn>  -- create or update the async endpoint
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
-PKG=$1; EP=${EP:-${PROJECT}-async}
+PKG=$1; EP=${EP:-${PROJECT}-async}; INSTANCE_TYPE=${INSTANCE_TYPE:-ml.g5.xlarge}
 aws sagemaker create-model --model-name pm-model-$STAMP --execution-role-arn $ROLE_ARN \
   --primary-container ModelPackageName=$PKG >/dev/null
 # InferenceAmiVersion: the default hosting AMI has driver 470 (CUDA 11.4); torch 2.6 needs 12.x
 aws sagemaker create-endpoint-config --endpoint-config-name pm-epc-$STAMP \
   --production-variants "[{\"VariantName\":\"AllTraffic\",\"ModelName\":\"pm-model-$STAMP\",
-     \"InstanceType\":\"ml.g5.xlarge\",\"InitialInstanceCount\":1,
+     \"InstanceType\":\"$INSTANCE_TYPE\",\"InitialInstanceCount\":1,
      \"InferenceAmiVersion\":\"al2-ami-sagemaker-inference-gpu-3-1\",
      \"ModelDataDownloadTimeoutInSeconds\":1200,\"ContainerStartupHealthCheckTimeoutInSeconds\":1200}]" \
   --async-inference-config "{\"OutputConfig\":{\"S3OutputPath\":\"s3://$BUCKET/async/out/\",
@@ -20,4 +20,12 @@ else
   aws sagemaker create-endpoint --endpoint-name $EP --endpoint-config-name pm-epc-$STAMP >/dev/null
 fi
 sleep 30; aws sagemaker wait endpoint-in-service --endpoint-name $EP
-aws sagemaker describe-endpoint --endpoint-name $EP --query "[EndpointStatus,EndpointConfigName]" --output text
+# A failed update rolls back and is InService again on the OLD config - check which one is live.
+read -r STATUS LIVE < <(aws sagemaker describe-endpoint --endpoint-name $EP \
+  --query "[EndpointStatus,EndpointConfigName]" --output text)
+if [ "$LIVE" != "pm-epc-$STAMP" ]; then
+  echo "DEPLOY FAILED, endpoint still on $LIVE:"
+  aws sagemaker describe-endpoint --endpoint-name $EP --query FailureReason --output text
+  exit 1
+fi
+echo "$STATUS on $LIVE ($INSTANCE_TYPE)"

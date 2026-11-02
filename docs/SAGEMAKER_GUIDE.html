@@ -1,0 +1,1889 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PromptMusic on SageMaker</title>
+<meta name="description" content="Validated, step-by-step guide to rebuild prompt_music_gen on Amazon SageMaker with the AWS CLI.">
+<style>
+:root {
+  --bg: #fbfaf7; --surface: #ffffff; --surface-2: #f3f1ec; --text: #1d1c1a; --muted: #5f5b53;
+  --border: #e3dfd6; --accent: #b4532a; --accent-soft: #f6e6dc; --code-bg: #f4f2ed;
+  --warn: #9a6200; --warn-bg: #fdf3dc; --tip: #2f6b3a; --tip-bg: #e6f2e7;
+  --info: #2d5a8a; --info-bg: #e5eef8; --cost: #7a3d8f; --cost-bg: #f2e7f6;
+  --store: #e9efe6; --acc-box: #f6e6dc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171614; --surface: #1f1e1b; --surface-2: #26241f; --text: #ece8e0; --muted: #a39d92;
+    --border: #36332d; --accent: #e08a5f; --accent-soft: #3a261c; --code-bg: #24221e;
+    --warn: #f0c060; --warn-bg: #352a12; --tip: #8fd19c; --tip-bg: #17301c;
+    --info: #8bb8ea; --info-bg: #172636; --cost: #d6a4e6; --cost-bg: #2c1c33;
+    --store: #1f2a1d; --acc-box: #3a261c;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #171614; --surface: #1f1e1b; --surface-2: #26241f; --text: #ece8e0; --muted: #a39d92;
+  --border: #36332d; --accent: #e08a5f; --accent-soft: #3a261c; --code-bg: #24221e;
+  --warn: #f0c060; --warn-bg: #352a12; --tip: #8fd19c; --tip-bg: #17301c;
+  --info: #8bb8ea; --info-bg: #172636; --cost: #d6a4e6; --cost-bg: #2c1c33;
+  --store: #1f2a1d; --acc-box: #3a261c;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+.layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
+nav { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 28px 20px;
+  border-right: 1px solid var(--border); }
+nav .brand { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
+nav .sub { color: var(--muted); font-size: .85rem; margin-bottom: 18px; }
+nav ol { list-style: none; padding: 0; margin: 0; }
+nav li a { display: block; padding: 6px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; font-size: .9rem; }
+nav li a:hover, nav li a.active { background: var(--accent-soft); color: var(--text); }
+nav .progress { margin-top: 18px; font-size: .85rem; color: var(--muted); }
+nav .bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+nav .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+#theme { margin-top: 16px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
+main { padding: 32px 48px 120px; min-width: 0; }
+header h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
+header p { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px 28px; margin: 0 0 24px; scroll-margin-top: 16px; }
+h2 { font-size: 1.35rem; margin: 0 0 12px; }
+h3 { font-size: 1.05rem; margin: 24px 0 8px; }
+p, li { max-width: 80ch; }
+a { color: var(--accent); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .86em;
+  background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.code { margin: 12px 0 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--code-bg); }
+.code-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px;
+  font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface-2);
+  font-family: ui-monospace, Menlo, monospace; }
+.copy { font: inherit; font-size: .75rem; padding: 2px 10px; border-radius: 5px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); cursor: pointer; }
+.copy.ok { color: var(--tip); border-color: var(--tip); }
+pre { margin: 0; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; font-size: .82rem; line-height: 1.55; white-space: pre; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: .9rem; display: block; overflow-x: auto; }
+thead th { text-align: left; background: var(--surface-2); font-weight: 600; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.note { border-radius: 8px; padding: 10px 14px; margin: 12px 0; font-size: .92rem; border-left: 4px solid; }
+.note.warn { background: var(--warn-bg); border-color: var(--warn); }
+.note.warn strong { color: var(--warn); }
+.note.tip { background: var(--tip-bg); border-color: var(--tip); }
+.note.tip strong { color: var(--tip); }
+.note.info { background: var(--info-bg); border-color: var(--info); }
+.note.info strong { color: var(--info); }
+.note.cost { background: var(--cost-bg); border-color: var(--cost); }
+.note.cost strong { color: var(--cost); }
+.done { float: right; font-size: .85rem; color: var(--muted); user-select: none; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; padding: 3px 12px 3px 8px; margin: -4px 0 8px 12px; }
+.done input { accent-color: var(--accent); vertical-align: -2px; }
+section.is-done { opacity: .72; }
+.diagram { margin: 20px 0 8px; }
+.diagram svg { width: 100%; height: auto; }
+.diagram .box rect { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
+.diagram .box.acc rect { fill: var(--acc-box); stroke: var(--accent); }
+.diagram .box.store rect { fill: var(--store); }
+.diagram text { fill: var(--text); font-size: 14px; font-weight: 600; text-anchor: middle; font-family: inherit; }
+.diagram text.sub { fill: var(--muted); font-size: 11.5px; font-weight: 400; }
+.diagram path { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+.diagram path.dash { stroke-dasharray: 5 4; }
+.diagram .arrowhead { fill: var(--muted); stroke: none; }
+figcaption { color: var(--muted); font-size: .85rem; text-align: center; }
+.checklist li { margin: 6px 0; }
+@media (max-width: 900px) {
+  .layout { display: block; }
+  nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 16px; }
+  nav ol { columns: 2; column-gap: 12px; }
+  main { padding: 20px 16px 80px; }
+  section { padding: 18px 16px; }
+  header h1 { font-size: 1.5rem; }
+}
+@media print { nav { display: none; } .layout { display: block; } .copy, .done { display: none; } section { break-inside: avoid-page; } }
+
+.note.ok { background: var(--tip-bg); border-color: var(--tip); }
+.note.ok strong { color: var(--tip); }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <div class="brand">PromptMusic on SageMaker</div>
+  <div class="sub">ap-south-1 · AWS CLI · validated 2026-11-02</div>
+  <ol id="toc"><li><a href="#overview">0. What this guide is</a></li>
+<li><a href="#better">1. The better solution</a></li>
+<li><a href="#cost">2. Quotas and cost</a></li>
+<li><a href="#prereq">3. Prerequisites and environment</a></li>
+<li><a href="#s3iam">4. S3 bucket and IAM roles</a></li>
+<li><a href="#project">5. Create the project and apply the patches</a></li>
+<li><a href="#image">6. Container image (built and tested in CodeBuild)</a></li>
+<li><a href="#prepare">7. Dataset download, tokenisation and validation (Processing)</a></li>
+<li><a href="#train">8. Training, evaluation and resume (Training job)</a></li>
+<li><a href="#registry">9. Register and approve the model</a></li>
+<li><a href="#serve">10. Inference server</a></li>
+<li><a href="#deploy">11. Deploy the async endpoint and scale to zero</a></li>
+<li><a href="#invoke">12. Make music</a></li>
+<li><a href="#orchestrate">13. One-command runs</a></li>
+<li><a href="#cleanup">14. Clean up</a></li>
+<li><a href="#challenges">15. Challenges</a></li>
+<li><a href="#runlog">16. Validation run log</a></li>
+<li><a href="#checklist">17. Checklist</a></li></ol>
+  <div class="progress"><span id="prog-label">0 of 0 steps done</span><div class="bar"><span id="prog-bar"></span></div></div>
+  <button id="theme" type="button">Toggle theme</button>
+</nav>
+<main>
+<header>
+  <h1>Rebuild prompt_music_gen on Amazon SageMaker</h1>
+  <p>Code, dataset validation, training, evaluation and music generation, all in AWS. Validated end to end; every file below is the one that ran.</p>
+</header>
+<section id="overview"><h2>0. What this guide is</h2>
+<div class="note ok"><strong>Validated</strong> Every command and file in this guide was run end to end in AWS account <code>240939827174</code>, region <code>ap-south-1</code>, on 2026-11-02. Code, dataset validation, training, evaluation and music generation all ran in AWS (CodeBuild + SageMaker). The laptop only edited files, uploaded the source zip, and sent AWS CLI calls. Section 16 is the run log with measured numbers. Section 15 lists the 17 problems the run found and how each is fixed in the files below.</div>
+<p>The guide rebuilds <code>prompt_music_gen</code> (prompt → REMI tokens → MIDI → arranged MIDI → sung, mastered WAV)
+on <strong>Amazon SageMaker</strong> as a new project, <code>promptmusic-sm</code>. Follow it top to bottom in an empty
+folder. Each step has the exact files, the exact commands, and a check.</p>
+
+<h3>Where each stage runs</h3>
+<table><thead><tr><th>Stage</th><th>Runs on</th><th>Entry point</th><th>Output</th></tr></thead><tbody><tr><td>Image build + unit tests</td><td>CodeBuild (BUILD_GENERAL1_LARGE)</td><td><code>buildspec.yml</code> → <code>sagemaker/Dockerfile</code></td><td>ECR <code>promptmusic:v2</code></td></tr><tr><td>Dataset download, tokenise, <b>validate</b></td><td>Processing job, 2 × ml.c5.2xlarge</td><td><code>sagemaker/entry/prepare.py</code></td><td>S3 <code>data/tokens/&lt;ver&gt;/</code> + <code>validation_*.json</code></td></tr><tr><td>Encoder export (mT5, encoder only)</td><td>same Processing job, host 0</td><td>same</td><td>S3 <code>models/mt5-base-encoder/</code></td></tr><tr><td>Training + checkpoints + evaluation</td><td>Training job, ml.g5.xlarge (or g6.xlarge)</td><td><code>sagemaker/entry/train_sm.py</code></td><td><code>model.tar.gz</code>, <code>evaluation.json</code>, MIDI samples</td></tr><tr><td>Model approval</td><td>SageMaker Model Registry</td><td><code>infra/register.sh</code></td><td>model package version</td></tr><tr><td>Music generation</td><td>Async endpoint, ml.g5.xlarge / g6.xlarge, scales to 0</td><td><code>sagemaker/entry/serve.py</code></td><td>S3 <code>async/out/*.out</code> (zip: MIDI + WAV + meta)</td></tr></tbody></table>
+
+<figure class="diagram" aria-label="Architecture diagram">
+<svg viewBox="0 0 880 300" role="img">
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+  <g class="box"><rect x="10" y="30" width="140" height="60" rx="8"/><text x="80" y="56">Hugging Face</text><text x="80" y="74" class="sub">MidiCaps · mT5 · MMS</text></g>
+  <g class="box acc"><rect x="200" y="30" width="160" height="60" rx="8"/><text x="280" y="56">Processing job</text><text x="280" y="74" class="sub">prepare.py + validation</text></g>
+  <g class="box store"><rect x="410" y="30" width="170" height="60" rx="8"/><text x="495" y="56">S3</text><text x="495" y="74" class="sub">tokens/ · encoder/</text></g>
+  <g class="box acc"><rect x="630" y="30" width="230" height="60" rx="8"/><text x="745" y="56">Training job (g5 / g6)</text><text x="745" y="74" class="sub">train_sm.py · bf16 · 2560 tok</text></g>
+  <g class="box store"><rect x="630" y="140" width="230" height="60" rx="8"/><text x="745" y="166">S3</text><text x="745" y="184" class="sub">checkpoints/ · model.tar.gz · eval</text></g>
+  <g class="box"><rect x="410" y="140" width="170" height="60" rx="8"/><text x="495" y="166">Model Registry</text><text x="495" y="184" class="sub">approve a version</text></g>
+  <g class="box acc"><rect x="200" y="140" width="160" height="60" rx="8"/><text x="280" y="166">Async endpoint</text><text x="280" y="184" class="sub">serve.py · 0↔1 GPU</text></g>
+  <g class="box"><rect x="10" y="140" width="140" height="60" rx="8"/><text x="80" y="166">You (CLI)</text><text x="80" y="184" class="sub">request.json</text></g>
+  <g class="box store"><rect x="200" y="240" width="160" height="50" rx="8"/><text x="280" y="270">S3 async/out (zip)</text></g>
+  <g class="box"><rect x="10" y="240" width="140" height="50" rx="8"/><text x="80" y="262">CodeBuild → ECR</text><text x="80" y="279" class="sub">tests run here</text></g>
+  <path d="M150 60 H200" marker-end="url(#arr)"/><path d="M360 60 H410" marker-end="url(#arr)"/><path d="M580 60 H630" marker-end="url(#arr)"/>
+  <path d="M745 90 V140" marker-end="url(#arr)"/><path d="M630 170 H580" marker-end="url(#arr)"/><path d="M410 170 H360" marker-end="url(#arr)"/>
+  <path d="M150 170 H200" marker-end="url(#arr)"/><path d="M280 200 V240" marker-end="url(#arr)"/><path d="M200 265 H150" class="dash" marker-end="url(#arr)"/>
+  <path d="M150 255 C 175 255, 180 110, 280 92" class="dash" marker-end="url(#arr)"/>
+</svg>
+<figcaption>One image runs all three SageMaker workloads (prepare, train, serve). Nothing but the source zip goes up from the laptop.</figcaption>
+</figure>
+</section>
+<section id="better"><h2>1. The better solution</h2>
+<p>What changed compared with the laptop project, and what the validation run measured for each change.</p>
+<table><thead><tr><th>#</th><th>Laptop project</th><th>SageMaker project</th><th>Measured in the run</th></tr></thead><tbody><tr><td>B1</td><td>Train at 1 024 tokens, generate 2 560 (unseen positions)</td><td>Train at <b>2 560</b> tokens</td><td>fits in 9.0–9.8 GB of the A10G's 24 GB (batch 8)</td></tr><tr><td>B2</td><td>fp32 on MPS (the <code>amp</code> key was ignored)</td><td><b>bf16 autocast</b> + TF32</td><td>≈65 000 (A10G) / ≈46 000 (L4) tokens/s vs 65–174 on the M2</td></tr><tr><td>B3</td><td>JSONL of Python lists, all in RAM</td><td><b><code>uint16</code> memmap shards</b> + JSONL index</td><td>20 000 pieces = 463 MB on disk</td></tr><tr><td>B4</td><td>Each piece truncated to its first N tokens</td><td>Full pieces, <b>random bar-aligned 2 560-token window</b> per step</td><td>87 % of pieces are longer than 2 560 tokens, so most data was being thrown away</td></tr><tr><td>B5</td><td>Logged train loss divided by the epoch's batch count (bug)</td><td>Divide by examples since the last log</td><td>train and validation loss now agree (e.g. 1.80 / 1.73 at step 1 000)</td></tr><tr><td>B6</td><td>Full mT5 from the Hub at run time (4.3 GB cache)</td><td><b>Encoder-only mT5</b> exported once to S3 (1.0 GB, safetensors)</td><td>no Hub download in training or serving</td></tr><tr><td>B7</td><td>Resume restarts the epoch</td><td>Auto-resume from <code>/opt/ml/checkpoints</code>, skip seen batches</td><td>stopped at step 1 150, new job on a different GPU (L4) resumed at step 1 000: 0 missing tensors, loss 1.80 → 1.79, LR schedule continued</td></tr><tr><td>B8</td><td><code>generate()</code> reloads the checkpoint per call</td><td>Load once per container</td><td>model load 6.9 s once; a song takes 18 s (instrumental) to 61 s (sung) of compute</td></tr><tr><td>B9</td><td>CLI on a laptop</td><td><b>Async endpoint</b>, autoscaling 0 ↔ 1</td><td>scale-to-zero validated (0 instances while idle)</td></tr><tr><td>B10</td><td>Manual <code>evaluate</code></td><td>Evaluate at the end of training on the same GPU</td><td><code>evaluation.json</code> in S3 + in the model registry</td></tr><tr><td>B11</td><td>Not present</td><td><b>Dataset validation gate</b>: the prepare job fails on bad data, and training refuses unvalidated shards</td><td>2 × <code>validation_*.json</code>, 13 checks/metrics each</td></tr><tr><td>B12</td><td>Tests run on the laptop</td><td><b>Tests run inside the image build</b> (CodeBuild)</td><td>caught a real Linux-only bug (V5)</td></tr></tbody></table>
+<h3>Considered and rejected</h3>
+<ul>
+<li><b>Pre-computing mT5 embeddings.</b> About 25 GB of features for the full corpus. The frozen encoder forward is cheap next to the decoder backward at 2 560 tokens.</li>
+<li><b>Real-time / serverless endpoints.</b> Real-time has a 60 s limit; serverless has no GPU.</li>
+<li><b>Managed spot for this account and region today.</b> The guide keeps the spot template (it is ~3× cheaper), but in the run neither g5 nor g6 spot got capacity in 30 minutes. Plan for on-demand fallback (V10).</li>
+</ul>
+</section>
+<section id="cost"><h2>2. Quotas and cost</h2>
+<p>Quotas read from the account before the run (<code>aws service-quotas list-service-quotas --service-code sagemaker</code>):</p>
+<table><thead><tr><th>Quota</th><th>Value</th><th>Used for</th></tr></thead><tbody><tr><td>ml.g5.xlarge / ml.g6.xlarge training</td><td>1 / 1</td><td>smoke + full training</td></tr><tr><td>ml.g5.xlarge / ml.g6.xlarge spot training</td><td>1 / 1</td><td>full training (if capacity exists)</td></tr><tr><td>ml.g5.xlarge / ml.g6.xlarge endpoint</td><td>2 / 1</td><td>async endpoint (a blue/green update needs 2)</td></tr><tr><td>ml.c5.2xlarge processing</td><td>2</td><td>prepare job</td></tr><tr><td>any GPU for processing</td><td><b>0</b></td><td>why evaluation runs inside the training job</td></tr></tbody></table>
+<h3>What the validation run cost (on-demand, ap-south-1)</h3>
+<table><thead><tr><th>Item</th><th>Billable time</th><th>Approx. cost</th></tr></thead><tbody><tr><td>CodeBuild, 7 builds (2 failed), BUILD_GENERAL1_LARGE</td><td>≈ 50 min</td><td>≈ $1</td></tr><tr><td>Processing, 4 prepare jobs × 2 ml.c5.2xlarge (2 failed early)</td><td>≈ 75 instance-min</td><td>≈ $0.5</td></tr><tr><td>Training ml.g5.xlarge: smoke fail + smoke + first 1 150 steps</td><td>455 + 500 + 955 s</td><td>≈ $0.8</td></tr><tr><td>Training ml.g6.xlarge: resumed steps 1 000 → 3 000 + eval</td><td>2 096 s</td><td>≈ $0.7</td></tr><tr><td>Training jobs that waited for capacity (6)</td><td>0 s</td><td>$0</td></tr><tr><td>Endpoint ml.g5.xlarge (smoke model) until scaled to 0</td><td>≈ 2 h</td><td>≈ $3</td></tr><tr><td>Endpoint ml.c6i.2xlarge (final model)</td><td>minutes, then 0</td><td>< $0.5</td></tr><tr><td>S3 ≈ 6 GB + ECR ≈ 22 GB (2 tags)</td><td>per month</td><td>≈ $2.5 / month</td></tr><tr><td><b>Total for the validation run</b></td><td></td><td><b>≈ $7 + storage</b> (check Cost Explorer: tag <code>project=promptmusic</code>)</td></tr></tbody></table>
+<div class="note cost"><strong>Cost</strong> The endpoint is the only thing that can bill while you sleep. <code>infra/autoscale.sh</code> scales it to 0 when idle; <code>infra/cleanup.sh</code> deletes it.</div>
+</section>
+<section id="prereq"><h2>3. Prerequisites and environment</h2>
+<label class="done"><input type="checkbox" data-step="prereq"> Done</label>
+<ul>
+<li>AWS CLI v2 with credentials for the target account. No Docker is needed; images are built in CodeBuild.</li>
+<li><code>git</code>, <code>zip</code> and <code>python3</code> on the laptop (only to edit, commit and zip).</li>
+</ul>
+<div class="code"><div class="code-head"><span>infra/env.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash"># infra/env.sh  --  source this file:  source infra/env.sh
+export AWS_REGION=ap-south-1
+export AWS_DEFAULT_REGION=$AWS_REGION
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export PROJECT=promptmusic
+export BUCKET=sagemaker-${PROJECT}-${ACCOUNT_ID}
+export ROLE_NAME=${PROJECT}-sagemaker-exec
+export ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}
+export ECR_REPO=${PROJECT}
+export IMAGE_TAG=${IMAGE_TAG:-v2}
+export IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
+export BASE_IMAGE=763104351884.dkr.ecr.${AWS_REGION}.amazonaws.com/pytorch-training:2.6.0-gpu-py312-cu126-ubuntu22.04-sagemaker
+export STAMP=${STAMP:-$(date +%Y%m%d-%H%M%S)}</code></pre></div>
+<div class="note tip"><strong>Tip</strong> Every script sources <code>infra/env.sh</code>. <code>STAMP</code> is a timestamp used in job names. Export a new one (<code>export STAMP=$(date +%Y%m%d-%H%M%S)</code>) before each new job, or the name collides with the previous job.</div>
+<h3>Budget</h3>
+<div class="code"><div class="code-head"><span>budget with an e-mail alert</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+aws budgets create-budget --account-id $ACCOUNT_ID \
+  --budget &#x27;{&quot;BudgetName&quot;:&quot;promptmusic-monthly&quot;,&quot;BudgetLimit&quot;:{&quot;Amount&quot;:&quot;30&quot;,&quot;Unit&quot;:&quot;USD&quot;},&quot;TimeUnit&quot;:&quot;MONTHLY&quot;,&quot;BudgetType&quot;:&quot;COST&quot;}&#x27; \
+  --notifications-with-subscribers &#x27;[{&quot;Notification&quot;:{&quot;NotificationType&quot;:&quot;ACTUAL&quot;,&quot;ComparisonOperator&quot;:&quot;GREATER_THAN&quot;,&quot;Threshold&quot;:80,&quot;ThresholdType&quot;:&quot;PERCENTAGE&quot;},&quot;Subscribers&quot;:[{&quot;SubscriptionType&quot;:&quot;EMAIL&quot;,&quot;Address&quot;:&quot;YOUR_EMAIL&quot;}]}]&#x27;</code></pre></div>
+<p>In the validation run the budget was created without a subscriber. Add your address with the command above.</p>
+</section>
+<section id="s3iam"><h2>4. S3 bucket and IAM roles</h2>
+<label class="done"><input type="checkbox" data-step="s3iam"> Done</label>
+<div class="code"><div class="code-head"><span>bucket</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+aws s3api create-bucket --bucket $BUCKET --region $AWS_REGION \
+  --create-bucket-configuration LocationConstraint=$AWS_REGION
+aws s3api put-public-access-block --bucket $BUCKET --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-lifecycle-configuration --bucket $BUCKET --lifecycle-configuration &#x27;{
+  &quot;Rules&quot;:[
+    {&quot;ID&quot;:&quot;expire-async&quot;,&quot;Status&quot;:&quot;Enabled&quot;,&quot;Filter&quot;:{&quot;Prefix&quot;:&quot;async/&quot;},&quot;Expiration&quot;:{&quot;Days&quot;:14}},
+    {&quot;ID&quot;:&quot;abort-mpu&quot;,&quot;Status&quot;:&quot;Enabled&quot;,&quot;Filter&quot;:{},&quot;AbortIncompleteMultipartUpload&quot;:{&quot;DaysAfterInitiation&quot;:2}}
+  ]}&#x27; </code></pre></div>
+<div class="code"><div class="code-head"><span>roles</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+# --- SageMaker execution role ---
+cat &gt; /tmp/trust.json &lt;&lt;&#x27;EOF&#x27;
+{&quot;Version&quot;:&quot;2012-10-17&quot;,&quot;Statement&quot;:[{&quot;Effect&quot;:&quot;Allow&quot;,
+  &quot;Principal&quot;:{&quot;Service&quot;:&quot;sagemaker.amazonaws.com&quot;},&quot;Action&quot;:&quot;sts:AssumeRole&quot;}]}
+EOF
+aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document file:///tmp/trust.json
+aws iam attach-role-policy --role-name $ROLE_NAME --policy-arn arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+cat &gt; /tmp/s3.json &lt;&lt;EOF
+{&quot;Version&quot;:&quot;2012-10-17&quot;,&quot;Statement&quot;:[
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;s3:ListBucket&quot;],&quot;Resource&quot;:&quot;arn:aws:s3:::${BUCKET}&quot;},
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;s3:GetObject&quot;,&quot;s3:PutObject&quot;,&quot;s3:DeleteObject&quot;,&quot;s3:AbortMultipartUpload&quot;],
+  &quot;Resource&quot;:&quot;arn:aws:s3:::${BUCKET}/*&quot;}]}
+EOF
+aws iam put-role-policy --role-name $ROLE_NAME --policy-name ${PROJECT}-s3 --policy-document file:///tmp/s3.json
+
+# --- CodeBuild role (builds and pushes the image) ---
+cat &gt; /tmp/cb-trust.json &lt;&lt;&#x27;EOF&#x27;
+{&quot;Version&quot;:&quot;2012-10-17&quot;,&quot;Statement&quot;:[{&quot;Effect&quot;:&quot;Allow&quot;,&quot;Principal&quot;:{&quot;Service&quot;:&quot;codebuild.amazonaws.com&quot;},&quot;Action&quot;:&quot;sts:AssumeRole&quot;}]}
+EOF
+aws iam create-role --role-name ${PROJECT}-codebuild --assume-role-policy-document file:///tmp/cb-trust.json
+cat &gt; /tmp/cb-policy.json &lt;&lt;EOF
+{&quot;Version&quot;:&quot;2012-10-17&quot;,&quot;Statement&quot;:[
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;logs:CreateLogGroup&quot;,&quot;logs:CreateLogStream&quot;,&quot;logs:PutLogEvents&quot;],&quot;Resource&quot;:&quot;*&quot;},
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;ecr:GetAuthorizationToken&quot;],&quot;Resource&quot;:&quot;*&quot;},
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;ecr:BatchCheckLayerAvailability&quot;,&quot;ecr:GetDownloadUrlForLayer&quot;,&quot;ecr:BatchGetImage&quot;],
+  &quot;Resource&quot;:[&quot;arn:aws:ecr:${AWS_REGION}:763104351884:repository/pytorch-training&quot;,&quot;arn:aws:ecr:${AWS_REGION}:${ACCOUNT_ID}:repository/${ECR_REPO}&quot;]},
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;ecr:InitiateLayerUpload&quot;,&quot;ecr:UploadLayerPart&quot;,&quot;ecr:CompleteLayerUpload&quot;,&quot;ecr:PutImage&quot;],
+  &quot;Resource&quot;:&quot;arn:aws:ecr:${AWS_REGION}:${ACCOUNT_ID}:repository/${ECR_REPO}&quot;},
+ {&quot;Effect&quot;:&quot;Allow&quot;,&quot;Action&quot;:[&quot;s3:GetObject&quot;,&quot;s3:GetObjectVersion&quot;],&quot;Resource&quot;:&quot;arn:aws:s3:::${BUCKET}/build/*&quot;}]}
+EOF
+aws iam put-role-policy --role-name ${PROJECT}-codebuild --policy-name ${PROJECT}-codebuild \
+  --policy-document file:///tmp/cb-policy.json</code></pre></div>
+<p><b>Check:</b> <code>aws iam get-role --role-name $ROLE_NAME --query Role.Arn</code></p>
+</section>
+<section id="project"><h2>5. Create the project and apply the patches</h2>
+<label class="done"><input type="checkbox" data-step="project"> Done</label>
+<div class="code"><div class="code-head"><span>layout</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-text">promptmusic-sm/
+  pyproject.toml  README.md  buildspec.yml  .gitignore
+  src/promptmusic/            copied from prompt_music_gen + the 6 patches below
+    data/shards.py            NEW  memmap token shards, random bar-aligned windows
+  configs/sagemaker.yaml      NEW  training config (smoke runs override via hyperparameters)
+  data/ragas  data/lyrics     small hand-written data (baked into the image)
+  tests/                      copied + test_shards.py + 2 regression tests
+  sagemaker/
+    Dockerfile  dispatch.sh  pin_torch.py
+    entry/prepare.py  entry/train_sm.py  entry/serve.py
+  infra/
+    env.sh render.sh run_all.sh register.sh deploy.sh autoscale.sh invoke.sh cleanup.sh
+    prepare-job.json train-smoke.json train-full.json
+  requests/instrumental.json  requests/tamil_love_song.json</code></pre></div>
+<div class="code"><div class="code-head"><span>bootstrap</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">mkdir promptmusic-sm &amp;&amp; cd promptmusic-sm &amp;&amp; git init
+SRC=~/grootan/learning/prompt_music_gen
+cp -R $SRC/src $SRC/tests $SRC/configs $SRC/pyproject.toml $SRC/README.md .
+mkdir -p data sagemaker/entry infra requests &amp;&amp; cp -R $SRC/data/ragas $SRC/data/lyrics data/
+touch sagemaker/entry/__init__.py
+find . -name __pycache__ -prune -exec rm -rf {{}} +</code></pre></div>
+<p>Apply the patches below. They are unified diffs against the original project. Save each one and run
+<code>git apply file.diff</code>, or edit by hand.</p>
+<h3>5.1 Encoder location from an env var (B6)</h3><div class="code"><div class="code-head"><span>src/promptmusic/model/text_encoder.py (patch)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-diff">--- a/src/promptmusic/model/text_encoder.py
++++ b/src/promptmusic/model/text_encoder.py
+@@ -28,6 +28,8 @@
+ 
+ from __future__ import annotations
+ 
++import os
++
+ from typing import Any
+ 
+ import torch
+@@ -85,7 +87,8 @@
+         # name still works (with a warning) across that whole range, whereas
+         # ``dtype`` would crash on 4.44-4.55.
+         self.encoder = T5EncoderModel.from_pretrained(
+-            model_name, torch_dtype=self.dtype, cache_dir=str(HF_CACHE_DIR / &quot;hub&quot;)
++            resolve_encoder_path(model_name), torch_dtype=self.dtype,
++            cache_dir=str(HF_CACHE_DIR / &quot;hub&quot;),
+         )
+         self.hidden_size = int(getattr(self.encoder.config, &quot;d_model&quot;, TEXT_ENCODER_DIM))
+ 
+@@ -136,6 +139,13 @@
+         return f&quot;model_name={self.model_name!r}, freeze={self.freeze}, dim={self.hidden_size}&quot;
+ 
+ 
++def resolve_encoder_path(model_name: str) -&gt; str:
++    &quot;&quot;&quot;``PROMPTMUSIC_TEXT_ENCODER`` points at a local encoder export (SageMaker
++    channel or model dir). Checkpoints keep the logical name, so the same file
++    loads on a laptop, in a training job and on an endpoint.&quot;&quot;&quot;
++    return os.environ.get(&quot;PROMPTMUSIC_TEXT_ENCODER&quot;) or model_name
++
++
+ def _parse_dtype(name: str) -&gt; torch.dtype:
+     return {
+         &quot;float32&quot;: torch.float32,
+@@ -164,7 +174,7 @@
+         self.model_name = model_name
+         self.max_length = max_length
+         self.tokenizer = AutoTokenizer.from_pretrained(
+-            model_name, cache_dir=str(HF_CACHE_DIR / &quot;hub&quot;)
++            resolve_encoder_path(model_name), cache_dir=str(HF_CACHE_DIR / &quot;hub&quot;)
+         )
+         # mT5 does not have a pad token by default; it uses &lt;extra_id_*&gt;.
+         if self.tokenizer.pad_token is None:</code></pre></div>
+<h3>5.2 Training loop: bf16, shards, loss-log fix, resume, bounded validation (B2–B5, B7)</h3><div class="code"><div class="code-head"><span>src/promptmusic/train.py (patch)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-diff">--- a/src/promptmusic/train.py
++++ b/src/promptmusic/train.py
+@@ -27,6 +27,7 @@
+ 
+ from __future__ import annotations
+ 
++import contextlib
+ import csv
+ import math
+ import time
+@@ -208,6 +209,16 @@
+ 
+     device = select_device(tcfg.get(&quot;device&quot;, &quot;auto&quot;))
+     LOG.info(&quot;device: %s&quot;, device)
++    if device == &quot;cuda&quot;:
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++    use_bf16 = (
++        device == &quot;cuda&quot; and bool(tcfg.get(&quot;bf16&quot;, True)) and torch.cuda.is_bf16_supported()
++    )
++    autocast = (
++        (lambda: torch.autocast(&quot;cuda&quot;, dtype=torch.bfloat16)) if use_bf16 else contextlib.nullcontext
++    )
++    LOG.info(&quot;mixed precision: %s&quot;, &quot;bf16&quot; if use_bf16 else &quot;fp32&quot;)
+     if device == &quot;mps&quot;:
+         LOG.info(&quot;Apple MPS selected - float64 and some ops are unavailable on this device&quot;)
+ 
+@@ -220,15 +231,18 @@
+     vocab_size = music_tokenizer.vocab_size
+     LOG.info(&quot;music vocabulary: %d tokens&quot;, vocab_size)
+ 
+-    examples = build_tokenized_dataset(
++    token_dir = cfg.get(&quot;data.token_dir&quot;)
++    examples = [] if token_dir else build_tokenized_dataset(
+         cfg, music_tokenizer, language=language, limit=cfg.get(&quot;data.limit&quot;)
+     )
+-    if not examples:
++    if not examples and not token_dir:
+         raise RuntimeError(
+             &quot;no training examples were built. Did the MIDI files download and extract?\n&quot;
+             &quot;Try:  promptmusic download --source midicaps&quot;
+         )
+-    train_examples, val_examples = split_examples(
++    train_examples, val_examples = [], []
++    if not token_dir:
++        train_examples, val_examples = split_examples(
+         examples,
+         val_fraction=float(cfg.get(&quot;data.val_fraction&quot;, 0.05)),
+         seed=int(cfg.get(&quot;project.seed&quot;, 42)),
+@@ -250,9 +264,35 @@
+             drop_last=False,
+         )
+ 
+-    train_loader = _make_loader(train_examples, shuffle=True)
+-    val_loader = _make_loader(val_examples, shuffle=False) if val_examples else None
++    if token_dir:
++        # SageMaker path: uint16 memmap shards + random bar-aligned windows.
++        from .data.shards import TokenShardDataset
++
++        window = max_tokens - 2                       # room for BOS/EOS
++        bar_id = music_tokenizer.vocab.get(&quot;Bar_None&quot;)
++        train_ds = TokenShardDataset(token_dir, &quot;train&quot;, window, bar_id)
++        val_ds = TokenShardDataset(token_dir, &quot;val&quot;, window, random_crop=False)
++        workers = int(tcfg.get(&quot;num_workers&quot;, 0))
+ 
++        def _collate(b):
++            return collate_fn(b, bos_id=bos_id, eos_id=eos_id, pad_id=pad_id, max_tokens=max_tokens)
++
++        train_loader = DataLoader(
++            train_ds, batch_size=int(tcfg.get(&quot;batch_size&quot;, 8)), shuffle=True,
++            num_workers=workers, collate_fn=_collate, pin_memory=device == &quot;cuda&quot;,
++            persistent_workers=workers &gt; 0, drop_last=True,
++        )
++        val_loader = DataLoader(
++            val_ds, batch_size=int(tcfg.get(&quot;batch_size&quot;, 8)), shuffle=False,
++            num_workers=0, collate_fn=_collate,
++        ) if len(val_ds) else None
++        train_examples, val_examples = train_ds.items, val_ds.items
++        LOG.info(&quot;token shards: %d train / %d val pieces&quot;, len(train_ds), len(val_ds))
++    else:
++        train_loader = _make_loader(train_examples, shuffle=True)
++        val_loader = _make_loader(val_examples, shuffle=False) if val_examples else None
++    val_max_batches = tcfg.get(&quot;val_max_batches&quot;)
++
+     # --- model ------------------------------------------------------------ #
+     model = build_model(
+         cfg,
+@@ -289,7 +329,7 @@
+     )
+ 
+     # --- resume ------------------------------------------------------------ #
+-    start_epoch, global_step = 0, 0
++    start_epoch, global_step, skip_batches = 0, 0, 0
+     best_val = float(&quot;inf&quot;)
+     resume = tcfg.get(&quot;resume&quot;)
+     if resume:
+@@ -307,6 +347,8 @@
+         if &quot;scheduler_state&quot; in payload:
+             scheduler.load_state_dict(payload[&quot;scheduler_state&quot;])
+         start_epoch = int(payload.get(&quot;epoch&quot;, 0))
++        # last.pt written mid-epoch records how far it got (spot restarts)
++        skip_batches = int(payload.get(&quot;batch_idx&quot;, -1)) + 1
+         global_step = int(payload.get(&quot;step&quot;, 0))
+         best_val = float(payload.get(&quot;metrics&quot;, {}).get(&quot;best_val_loss&quot;, best_val))
+         LOG.info(&quot;resumed from %s at epoch %d, step %d&quot;, resume, start_epoch, global_step)
+@@ -330,22 +372,26 @@
+ 
+     for epoch in range(start_epoch, epochs):
+         optimizer.zero_grad(set_to_none=True)
+-        running_loss, running_tokens, epoch_start = 0.0, 0, time.time()
++        running_loss, running_examples, running_tokens = 0.0, 0, 0
++        epoch_start = time.time()
+ 
+         for batch_idx, batch in enumerate(train_loader):
++            if skip_batches and batch_idx &lt; skip_batches:
++                continue
+             texts = batch[&quot;texts&quot;]
+             enc = text_tok(texts)
+             input_ids = enc[&quot;input_ids&quot;].to(device)
+             attention_mask = enc[&quot;attention_mask&quot;].to(device)
+ 
+-            with torch.no_grad():
+-                memory = model.encode_prompt(input_ids, attention_mask)
+-
+-            music_ids = batch[&quot;music_ids&quot;].to(device)
+-            loss, _ = model.loss(music_ids, memory, memory_mask=attention_mask)
++            music_ids = batch[&quot;music_ids&quot;].to(device, non_blocking=True)
++            with autocast():
++                with torch.no_grad():
++                    memory = model.encode_prompt(input_ids, attention_mask)
++                loss, _ = model.loss(music_ids, memory, memory_mask=attention_mask)
+             (loss / grad_accum).backward()
+ 
+             running_loss += float(loss.detach()) * music_ids.size(0)
++            running_examples += music_ids.size(0)
+             running_tokens += int(batch[&quot;music_mask&quot;].sum())
+ 
+             stepped = False
+@@ -360,8 +406,9 @@
+                 stepped = True
+ 
+                 if global_step % log_every == 0:
+-                    n = max(1, batch_idx + 1)
+-                    avg = running_loss / n
++                    # mean over examples since the LAST log line (was: / batch_idx+1,
++                    # which shrank the printed loss after the first log)
++                    avg = running_loss / max(1, running_examples)
+                     elapsed = time.time() - t_start
+                     row = {
+                         &quot;step&quot;: global_step,
+@@ -381,10 +428,11 @@
+                         epoch, global_step, total_steps, avg, math.exp(min(avg, 20)),
+                         scheduler.get_last_lr()[0], running_tokens / max(elapsed, 1e-6),
+                     )
+-                    running_loss, running_tokens, t_start = 0.0, 0, time.time()
++                    running_loss, running_examples, running_tokens = 0.0, 0, 0
++                    t_start = time.time()
+ 
+                 if val_loader is not None and global_step % val_every == 0:
+-                    val_loss = _validate(model, val_loader, text_tok, device)
++                    val_loss = _validate(model, val_loader, text_tok, device, autocast, val_max_batches)
+                     model.train()
+                     row = {&quot;step&quot;: global_step, &quot;epoch&quot;: epoch, &quot;split&quot;: &quot;val&quot;,
+                            &quot;loss&quot;: round(val_loss, 5),
+@@ -405,18 +453,19 @@
+                     save_checkpoint(
+                         ckpt_dir / &quot;last.pt&quot;, model, optimizer=optimizer, scheduler=scheduler,
+                         epoch=epoch, step=global_step, metrics={&quot;best_val_loss&quot;: best_val},
+-                        config=cfg, vocab=music_tokenizer.vocab,
++                        config=cfg, vocab=music_tokenizer.vocab, extra={&quot;batch_idx&quot;: batch_idx},
+                     )
+ 
+                 if max_steps and global_step &gt;= int(max_steps):
+                     stopped_early = True
+                     break
+ 
++        skip_batches = 0
+         epoch_time = time.time() - epoch_start
+         LOG.info(&quot;epoch %d finished in %s&quot;, epoch, format_duration(epoch_time))
+ 
+         if val_loader is not None:
+-            val_loss = _validate(model, val_loader, text_tok, device)
++            val_loss = _validate(model, val_loader, text_tok, device, autocast, val_max_batches)
+             model.train()
+             row = {&quot;step&quot;: global_step, &quot;epoch&quot;: epoch, &quot;split&quot;: &quot;val&quot;,
+                    &quot;loss&quot;: round(val_loss, 5), &quot;perplexity&quot;: round(math.exp(min(val_loss, 20)), 3)}
+@@ -467,17 +516,23 @@
+ # Validation
+ # --------------------------------------------------------------------------- #
+ @torch.no_grad()
+-def _validate(model, loader, text_tok, device: str) -&gt; float:
+-    &quot;&quot;&quot;Mean cross-entropy over the validation set.&quot;&quot;&quot;
++def _validate(model, loader, text_tok, device: str, autocast=None, max_batches=None) -&gt; float:
++    &quot;&quot;&quot;Mean cross-entropy over the validation set (optionally the first N batches).&quot;&quot;&quot;
++    import contextlib
++
++    autocast = autocast or contextlib.nullcontext
+     model.eval()
+     total, count = 0.0, 0
+-    for batch in loader:
++    for i, batch in enumerate(loader):
++        if max_batches and i &gt;= int(max_batches):
++            break
+         enc = text_tok(batch[&quot;texts&quot;])
+-        memory = model.encode_prompt(
+-            enc[&quot;input_ids&quot;].to(device), enc[&quot;attention_mask&quot;].to(device)
+-        )
+         music_ids = batch[&quot;music_ids&quot;].to(device)
+-        loss, _ = model.loss(music_ids, memory, memory_mask=enc[&quot;attention_mask&quot;].to(device))
++        with autocast():
++            memory = model.encode_prompt(
++                enc[&quot;input_ids&quot;].to(device), enc[&quot;attention_mask&quot;].to(device)
++            )
++            loss, _ = model.loss(music_ids, memory, memory_mask=enc[&quot;attention_mask&quot;].to(device))
+         total += float(loss) * music_ids.size(0)
+         count += music_ids.size(0)
+     return total / max(count, 1)</code></pre></div>
+<h3>5.3 bf16 encoder output into an fp32 decoder (V8)</h3><div class="code"><div class="code-head"><span>src/promptmusic/model/decoder.py (patch)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-diff">--- a/src/promptmusic/model/decoder.py
++++ b/src/promptmusic/model/decoder.py
+@@ -351,7 +351,9 @@
+         x = self.pos_enc(x, offset=offset)
+         x = self.emb_dropout(x)
+ 
+-        mem = self.memory_proj(memory)
++        # The frozen encoder may run in bf16 (model.text_encoder.dtype); outside
++        # autocast (generation) its output must match the decoder&#x27;s weights.
++        mem = self.memory_proj(memory.to(self.memory_proj.weight.dtype))
+         if hasattr(self.memory_norm, &quot;weight&quot;):
+             mem = self.memory_norm(mem)
+ </code></pre></div>
+<h3>5.4 Config names must not be shadowed by folders (V6)</h3><div class="code"><div class="code-head"><span>src/promptmusic/config.py (patch)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-diff">--- a/src/promptmusic/config.py
++++ b/src/promptmusic/config.py
+@@ -267,13 +267,15 @@
+             return cls(DEFAULTS, source=&quot;defaults&quot;)
+ 
+         path = Path(source)
+-        if not path.is_absolute() and not path.exists():
++        # is_file(), not exists(): a *directory* with the config&#x27;s name in the
++        # working dir (e.g. sagemaker/ next to configs/) must not shadow it.
++        if not path.is_absolute() and not path.is_file():
+             candidate = CONFIGS_DIR / f&quot;{source}.yaml&quot;
+-            if candidate.exists():
++            if candidate.is_file():
+                 path = candidate
+-            elif (CONFIGS_DIR / source).exists():
++            elif (CONFIGS_DIR / source).is_file():
+                 path = CONFIGS_DIR / source
+-        if not path.exists():
++        if not path.is_file():
+             raise FileNotFoundError(f&quot;config not found: {source}&quot;)
+ 
+         with open(path, encoding=&quot;utf-8&quot;) as fh:</code></pre></div>
+<h3>5.5 Keep note release tails with fluidsynth 2.2 (V5)</h3><div class="code"><div class="code-head"><span>src/promptmusic/render.py (patch)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-diff">--- a/src/promptmusic/render.py
++++ b/src/promptmusic/render.py
+@@ -282,6 +282,32 @@
+ # --------------------------------------------------------------------------- #
+ # Individual backends
+ # --------------------------------------------------------------------------- #
++def _with_release_tail(midi: Path, out: Path, tail_sec: float = 1.5) -&gt; Path:
++    &quot;&quot;&quot;Copy ``midi`` with every end_of_track moved ``tail_sec`` later.
++
++    Returns the original path if the file cannot be parsed (render anyway).
++    &quot;&quot;&quot;
++    try:
++        import mido
++
++        mf = mido.MidiFile(str(midi))
++        tempo = 500000
++        for track in mf.tracks:
++            for msg in track:
++                if msg.type == &quot;set_tempo&quot;:
++                    tempo = msg.tempo
++        ticks = int(mido.second2tick(tail_sec, mf.ticks_per_beat, tempo))
++        for track in mf.tracks:
++            if track and track[-1].type == &quot;end_of_track&quot;:
++                track[-1].time += ticks
++            else:
++                track.append(mido.MetaMessage(&quot;end_of_track&quot;, time=ticks))
++        mf.save(str(out))
++        return out
++    except Exception:  # noqa: BLE001 - padding is cosmetic, never fatal
++        return midi
++
++
+ def _render_fluidsynth(
+     midi: Path, wav: Path, soundfont: Path, sample_rate: int, gain: float
+ ) -&gt; None:
+@@ -289,6 +315,11 @@
+     if not exe:
+         raise RuntimeError(&quot;fluidsynth executable not on PATH (brew install fluid-synth)&quot;)
+ 
++    # fluidsynth &lt;= 2.2 (Ubuntu 22.04, the SageMaker images) stops at the last
++    # MIDI event and cuts every release tail; 2.4+ (Homebrew) lets notes ring.
++    # Pushing end_of_track later makes both versions render the tail.
++    padded = _with_release_tail(midi, wav.with_suffix(&quot;.tail.mid&quot;))
++
+     cmd = [
+         exe,
+         &quot;-ni&quot;,                       # no interactive shell
+@@ -297,9 +328,11 @@
+         &quot;-g&quot;, str(max(0.0, min(gain, 1.0))),
+         &quot;-q&quot;,                        # quiet
+         str(soundfont),
+-        str(midi),
++        str(padded),
+     ]
+     proc = subprocess.run(cmd, capture_output=True, text=True)
++    if padded != midi:
++        padded.unlink(missing_ok=True)
+     if proc.returncode != 0 or not wav.exists():
+         raise RuntimeError(f&quot;fluidsynth exited {proc.returncode}: {proc.stderr.strip()[:400]}&quot;)
+ </code></pre></div>
+<h3>5.6 New module and tests</h3>
+<div class="code"><div class="code-head"><span>src/promptmusic/data/shards.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">&quot;&quot;&quot;Token shards written by ``sagemaker/entry/prepare.py``.
+
+``tokens_&lt;rank&gt;.bin``   every piece of one shard, concatenated, ``uint16``
+``index_&lt;rank&gt;.jsonl``  ``{&quot;offset&quot;, &quot;length&quot;, &quot;text&quot;, &quot;location&quot;, &quot;split&quot;}`` per piece
+
+The music vocabulary has 423 tokens, so two bytes per token is enough: the
+full MidiCaps corpus fits in about 1 GB instead of many GB of Python ints.
+&quot;&quot;&quot;
+from __future__ import annotations
+
+import json
+import random
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+
+
+class TokenShardDataset(Dataset):
+    &quot;&quot;&quot;Memory-mapped token shards with random, bar-aligned training windows.&quot;&quot;&quot;
+
+    def __init__(
+        self,
+        root: str | Path,
+        split: str,
+        window: int,
+        bar_id: int | None = None,
+        random_crop: bool = True,
+    ):
+        self.root = Path(root)
+        self.window = int(window)          # music tokens per example, BOS/EOS excluded
+        self.bar_id = bar_id
+        self.random_crop = random_crop and split == &quot;train&quot;
+        self.items: list[tuple[str, int, int, str]] = []
+        for index in sorted(self.root.glob(&quot;index_*.jsonl&quot;)):
+            rank = index.stem.split(&quot;_&quot;, 1)[1]
+            with index.open(encoding=&quot;utf-8&quot;) as fh:
+                for line in fh:
+                    r = json.loads(line)
+                    if r[&quot;split&quot;] == split:
+                        self.items.append((rank, int(r[&quot;offset&quot;]), int(r[&quot;length&quot;]), r[&quot;text&quot;]))
+        self._maps: dict[str, np.memmap] = {}   # opened lazily, once per DataLoader worker
+
+    def _map(self, rank: str) -&gt; np.memmap:
+        if rank not in self._maps:
+            self._maps[rank] = np.memmap(self.root / f&quot;tokens_{rank}.bin&quot;, dtype=np.uint16, mode=&quot;r&quot;)
+        return self._maps[rank]
+
+    def __len__(self) -&gt; int:
+        return len(self.items)
+
+    def window_start(self, piece: np.ndarray, rng: random.Random | None = None) -&gt; int:
+        &quot;&quot;&quot;Random start, snapped back to the closest bar line at or before it.&quot;&quot;&quot;
+        n = len(piece)
+        if not self.random_crop or n &lt;= self.window:
+            return 0
+        start = (rng or random).randint(0, n - self.window)
+        if self.bar_id is not None:
+            bars = np.flatnonzero(piece[: start + 1] == self.bar_id)
+            start = int(bars[-1]) if bars.size else 0
+        return start
+
+    def __getitem__(self, i: int) -&gt; dict[str, Any]:
+        rank, off, n, text = self.items[i]
+        piece = self._map(rank)[off: off + n]
+        start = self.window_start(piece)
+        ids = np.asarray(piece[start: start + self.window], dtype=np.int64)
+        return {&quot;ids&quot;: torch.from_numpy(ids), &quot;text&quot;: text, &quot;index&quot;: i}</code></pre></div>
+<div class="code"><div class="code-head"><span>tests/test_shards.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">import json
+
+import numpy as np
+
+from promptmusic.data.shards import TokenShardDataset
+
+
+def _write(tmp_path, pieces, splits):
+    offset = 0
+    with open(tmp_path / &quot;tokens_0.bin&quot;, &quot;wb&quot;) as fb, open(tmp_path / &quot;index_0.jsonl&quot;, &quot;w&quot;) as fi:
+        for i, (p, s) in enumerate(zip(pieces, splits)):
+            arr = np.asarray(p, dtype=np.uint16)
+            fb.write(arr.tobytes())
+            fi.write(json.dumps({&quot;offset&quot;: offset, &quot;length&quot;: len(p), &quot;text&quot;: f&quot;t{i}&quot;,
+                                 &quot;location&quot;: f&quot;l{i}&quot;, &quot;split&quot;: s}) + &quot;\n&quot;)
+            offset += len(p)
+
+
+def test_split_and_roundtrip(tmp_path):
+    _write(tmp_path, [[5, 6, 7], [8, 9], [10, 11, 12, 13]], [&quot;train&quot;, &quot;val&quot;, &quot;train&quot;])
+    tr = TokenShardDataset(tmp_path, &quot;train&quot;, window=100)
+    va = TokenShardDataset(tmp_path, &quot;val&quot;, window=100)
+    assert len(tr) == 2 and len(va) == 1
+    assert tr[1][&quot;ids&quot;].tolist() == [10, 11, 12, 13]
+    assert va[0][&quot;ids&quot;].tolist() == [8, 9]
+
+
+def test_window_is_bar_aligned_and_bounded(tmp_path):
+    bar = 4
+    piece = ([bar] + [7] * 9) * 50                     # a bar every 10 tokens
+    _write(tmp_path, [piece], [&quot;train&quot;])
+    ds = TokenShardDataset(tmp_path, &quot;train&quot;, window=64, bar_id=bar)
+    for _ in range(50):
+        ids = ds[0][&quot;ids&quot;].tolist()
+        assert len(ids) == 64 and ids[0] == bar
+
+
+def test_val_never_crops(tmp_path):
+    _write(tmp_path, [list(range(1, 200))], [&quot;val&quot;])
+    ds = TokenShardDataset(tmp_path, &quot;val&quot;, window=50)
+    assert ds[0][&quot;ids&quot;].tolist() == list(range(1, 51))</code></pre></div>
+<div class="code"><div class="code-head"><span>tests/test_config.py (append)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">def test_directory_with_config_name_does_not_shadow_config(tmp_path, monkeypatch):
+    &quot;&quot;&quot;Regression: /opt/program/sagemaker/ (code) shadowed configs/sagemaker.yaml.&quot;&quot;&quot;
+    from promptmusic.config import Config
+
+    (tmp_path / &quot;smoke&quot;).mkdir()
+    monkeypatch.chdir(tmp_path)
+    cfg = Config.load(&quot;smoke&quot;)
+    assert str(cfg.source).endswith(&quot;smoke.yaml&quot;)</code></pre></div>
+<div class="code"><div class="code-head"><span>tests/test_decoder.py (append)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">def test_bf16_memory_is_accepted_by_fp32_decoder():
+    &quot;&quot;&quot;Regression: bf16 mT5 output crashed generation (no autocast there).&quot;&quot;&quot;
+    import torch
+
+    from promptmusic.model.decoder import MusicDecoder
+
+    dec = MusicDecoder(vocab_size=50, d_model=32, nhead=4, num_layers=1,
+                       dim_feedforward=64, text_dim=16, max_len=64)
+    ids = torch.randint(3, 50, (1, 8))
+    memory = torch.randn(1, 5, 16, dtype=torch.bfloat16)
+    out = dec(ids, memory)
+    logits = out[0] if isinstance(out, tuple) else out
+    assert logits.dtype == torch.float32</code></pre></div>
+<h3>5.7 Config</h3>
+<div class="code"><div class="code-head"><span>configs/sagemaker.yaml</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-yaml"># ---------------------------------------------------------------------------
+# sagemaker.yaml - training on one NVIDIA A10G (ml.g5.xlarge, 24 GB)
+# Smoke runs reuse this file and pass overrides as SageMaker hyperparameters
+# (e.g. train.max_steps=200); see infra/train-smoke.json.
+# ---------------------------------------------------------------------------
+project:
+  name: prompt_music_gen
+  seed: 42
+data:
+  limit: null
+  token_dir: /opt/ml/input/data/train      # SageMaker &quot;train&quot; channel (token shards)
+tokenizer:
+  max_tokens: 2560                         # = generation length (no extrapolation)
+model:
+  text_encoder:
+    name: google/mt5-base                  # logical name; PROMPTMUSIC_TEXT_ENCODER gives the path
+    dtype: bfloat16
+    max_length: 128
+  decoder:
+    max_len: 4096
+train:
+  epochs: 3
+  batch_size: 8
+  grad_accum: 2
+  lr: 3.0e-4
+  num_workers: 4
+  bf16: true
+  log_every: 50
+  val_every: 1000
+  val_max_batches: 50
+  save_every: 500
+  device: cuda
+generate:
+  max_new_tokens: 2400
+  temperature: 0.95
+  top_p: 0.92</code></pre></div>
+</section>
+<section id="image"><h2>6. Container image (built and tested in CodeBuild)</h2>
+<label class="done"><input type="checkbox" data-step="image"> Done</label>
+<div class="code"><div class="code-head"><span>sagemaker/Dockerfile</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-dockerfile"># One image for prepare (Processing), train (Training) and serve (Endpoint).
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    PROMPTMUSIC_HOME=/opt/program HF_HOME=/tmp/hf
+
+RUN apt-get update \
+ &amp;&amp; apt-get install -y --no-install-recommends fluidsynth fluid-soundfont-gm libsndfile1 \
+ &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/program
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY configs ./configs
+COPY data ./data
+COPY tests ./tests
+
+# Never let pip replace the CUDA build of torch that ships in the base image.
+# (DLC wheels show up in `pip freeze` as &quot;torch @ file://...&quot;, so read the versions instead.)
+COPY sagemaker/pin_torch.py /tmp/pin_torch.py
+RUN python /tmp/pin_torch.py &gt; /tmp/constraints.txt \
+ &amp;&amp; cat /tmp/constraints.txt \
+ &amp;&amp; pip install --no-cache-dir -c /tmp/constraints.txt -e &quot;.[analysis]&quot; \
+      &quot;transformers&gt;=4.44,&lt;5&quot; sentencepiece flask==3.0.3 gunicorn==22.0.0 \
+      pytest pytest-timeout \
+ &amp;&amp; python -c &quot;import torch, promptmusic; print(&#x27;torch&#x27;, torch.__version__, &#x27;cuda&#x27;, torch.version.cuda)&quot;
+
+# Build gate: the offline unit tests must pass inside the real image.
+RUN python -m pytest -q -m &quot;not slow&quot; -p no:cacheprovider tests
+
+COPY sagemaker ./sagemaker
+RUN chmod +x sagemaker/dispatch.sh &amp;&amp; ln -s /opt/program/sagemaker/dispatch.sh /usr/local/bin/dispatch.sh
+ENTRYPOINT [&quot;/usr/local/bin/dispatch.sh&quot;]</code></pre></div>
+<div class="code"><div class="code-head"><span>sagemaker/pin_torch.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">&quot;&quot;&quot;Print pip constraints that pin the torch build shipped in the base image.&quot;&quot;&quot;
+import importlib.metadata as md
+
+for name in (&quot;torch&quot;, &quot;torchvision&quot;, &quot;torchaudio&quot;):
+    try:
+        print(f&quot;{name}=={md.version(name)}&quot;)
+    except md.PackageNotFoundError:
+        pass</code></pre></div>
+<div class="code"><div class="code-head"><span>sagemaker/dispatch.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# SageMaker runs:  &lt;image&gt; train   (training jobs)
+#                  &lt;image&gt; serve   (endpoints)
+# Processing jobs set their own ContainerEntrypoint.
+set -euo pipefail
+case &quot;${1:-}&quot; in
+  train) shift; exec python /opt/program/sagemaker/entry/train_sm.py &quot;$@&quot; ;;
+  serve) shift; cd /opt/program/sagemaker
+         exec gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 2 \
+              --timeout 3600 --graceful-timeout 60 entry.serve:app ;;
+  *)     exec &quot;$@&quot; ;;
+esac</code></pre></div>
+<div class="code"><div class="code-head"><span>buildspec.yml</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-yaml">version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 763104351884.dkr.ecr.$AWS_REGION.amazonaws.com
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  build:
+    commands:
+      - docker build -f sagemaker/Dockerfile --build-arg BASE_IMAGE=$BASE_IMAGE -t $IMAGE_URI .
+  post_build:
+    commands:
+      - test &quot;$CODEBUILD_BUILD_SUCCEEDING&quot; = &quot;1&quot; &amp;&amp; docker push $IMAGE_URI</code></pre></div>
+<div class="code"><div class="code-head"><span>.gitignore</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-text">__pycache__/
+.venv/
+*.egg-info/
+outputs/
+song/
+*.zip</code></pre></div>
+<h3>Create the repository and the CodeBuild project, then build</h3>
+<div class="code"><div class="code-head"><span>one-time setup</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+aws ecr create-repository --repository-name $ECR_REPO --image-scanning-configuration scanOnPush=true
+
+# A brand-new role is rejected as &quot;Invalid service role&quot; for a few minutes (IAM propagation): retry.
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  aws codebuild create-project --name ${PROJECT}-image \
+    --source type=S3,location=$BUCKET/build/src.zip,buildspec=buildspec.yml \
+    --artifacts type=NO_ARTIFACTS \
+    --environment &quot;type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_LARGE,privilegedMode=true,environmentVariables=[{name=ACCOUNT_ID,value=$ACCOUNT_ID},{name=IMAGE_URI,value=$IMAGE_URI},{name=BASE_IMAGE,value=$BASE_IMAGE}]&quot; \
+    --service-role ${PROJECT}-codebuild --timeout-in-minutes 90 &amp;&amp; break
+  echo &quot;role not ready, retry $i&quot;; sleep 30
+done</code></pre></div>
+<div class="code"><div class="code-head"><span>build (repeat after every code change)</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+git add -A &amp;&amp; git commit -qm &quot;...&quot;                      # the zip is built from the last commit
+git archive --format=zip -o /tmp/src.zip HEAD
+aws s3 cp /tmp/src.zip s3://$BUCKET/build/src.zip       # the ONLY upload from the laptop
+B=$(aws codebuild start-build --project-name ${PROJECT}-image --query build.id --output text)
+until [ &quot;$(aws codebuild batch-get-builds --ids $B --query &#x27;builds[0].buildStatus&#x27; --output text)&quot; != IN_PROGRESS ]; do sleep 30; done
+aws codebuild batch-get-builds --ids $B --query &quot;builds[0].buildStatus&quot; --output text
+aws logs tail /aws/codebuild/${PROJECT}-image --log-stream-names ${B#*:} | grep -E &quot;passed|failed|FAILED|torch &quot;</code></pre></div>
+<div class="note info"><strong>Why</strong> A build takes about 5–12 minutes. Pulling and pushing the 10.7 GB image is most of it; the tests take seconds. When you change the image tag (<code>IMAGE_TAG</code> in <code>env.sh</code>), also update the CodeBuild project's <code>IMAGE_URI</code> with <code>aws codebuild update-project --name promptmusic-image --environment ...</code> (same <code>--environment</code> string as above).</div>
+<div class="code"><div class="code-head"><span>find a base image tag</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash"># list current PyTorch training DLC tags (pick one with a 12.x CUDA and torch &gt;= 2.6)
+aws ecr describe-images --registry-id 763104351884 --repository-name pytorch-training \
+  --query &quot;sort_by(imageDetails,&amp;imagePushedAt)[-40:].imageTags[?contains(@,&#x27;gpu&#x27;) &amp;&amp; contains(@,&#x27;sagemaker&#x27;)]&quot; \
+  --output text | tr &#x27;\t&#x27; &#x27;\n&#x27; | grep -v -- &#x27;-v[0-9]&#x27; | sort -u</code></pre></div>
+</section>
+<section id="prepare"><h2>7. Dataset download, tokenisation and validation (Processing)</h2>
+<label class="done"><input type="checkbox" data-step="prepare"> Done</label>
+<div class="code"><div class="code-head"><span>sagemaker/entry/prepare.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">&quot;&quot;&quot;SageMaker Processing entry: MidiCaps -&gt; validated uint16 token shards.
+
+Each host downloads MidiCaps from Hugging Face, tokenises its round-robin share
+of the captions on every core, validates what it produced, and writes:
+
+    /opt/ml/processing/output/tokens/tokens_&lt;rank&gt;.bin
+    /opt/ml/processing/output/tokens/index_&lt;rank&gt;.jsonl
+    /opt/ml/processing/output/tokens/validation_&lt;rank&gt;.json
+    /opt/ml/processing/output/tokens/vocab.json            (host 0)
+    /opt/ml/processing/output/encoder/...                  (host 0, encoder-only mT5)
+
+The job FAILS (non-zero exit) when a validation check fails, so a bad dataset
+never reaches a training job.
+&quot;&quot;&quot;
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import multiprocessing as mp
+import os
+import sys
+import time
+import zlib
+from collections import Counter
+from pathlib import Path
+
+import numpy as np
+
+logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;,
+                    stream=sys.stdout)
+LOG = logging.getLogger(&quot;prepare&quot;)
+
+WORK = Path(&quot;/opt/ml/processing/work&quot;)            # on the job&#x27;s EBS volume
+TOKENS_OUT = Path(&quot;/opt/ml/processing/output/tokens&quot;)
+ENCODER_OUT = Path(&quot;/opt/ml/processing/output/encoder&quot;)
+
+_TOK = None
+_MAX = 16384
+
+
+def host_rank() -&gt; tuple[int, int]:
+    rc = Path(&quot;/opt/ml/config/resourceconfig.json&quot;)
+    if not rc.exists():
+        return 0, 1
+    cfg = json.loads(rc.read_text())
+    hosts = sorted(cfg[&quot;hosts&quot;])
+    return hosts.index(cfg[&quot;current_host&quot;]), len(hosts)
+
+
+def _init(tok_cfg: dict, max_tokens: int) -&gt; None:
+    global _TOK, _MAX
+    from promptmusic.data.tokenizer import build_tokenizer
+    _TOK, _MAX = build_tokenizer(tok_cfg), max_tokens
+
+
+def _encode(job: tuple[str, str, str, float]):
+    midi_path, text, location, duration = job
+    try:
+        ids = _TOK.encode_midi(midi_path, max_tokens=_MAX)
+    except Exception as exc:                 # one corrupt file must not stop the shard
+        return (&quot;error&quot;, type(exc).__name__, location)
+    if len(ids) &lt; 8:
+        return (&quot;too_short&quot;, len(ids), location)
+    return (&quot;ok&quot;, np.asarray(ids, dtype=np.uint16), text, location, duration)
+
+
+def validate(report: dict, thresholds: argparse.Namespace) -&gt; list[str]:
+    &quot;&quot;&quot;Return the list of failed checks (empty = dataset is usable).&quot;&quot;&quot;
+    failed = []
+    if report[&quot;kept&quot;] &lt; thresholds.min_pieces:
+        failed.append(f&quot;kept {report[&#x27;kept&#x27;]} pieces &lt; min {thresholds.min_pieces}&quot;)
+    if report[&quot;kept_ratio&quot;] &lt; thresholds.min_kept_ratio:
+        failed.append(f&quot;kept ratio {report[&#x27;kept_ratio&#x27;]:.3f} &lt; {thresholds.min_kept_ratio}&quot;)
+    if report[&quot;max_token_id&quot;] &gt;= report[&quot;vocab_size&quot;]:
+        failed.append(f&quot;token id {report[&#x27;max_token_id&#x27;]} outside vocab {report[&#x27;vocab_size&#x27;]}&quot;)
+    if report[&quot;split&quot;].get(&quot;val&quot;, 0) == 0:
+        failed.append(&quot;no validation pieces&quot;)
+    if report[&quot;empty_text&quot;] &gt; 0:
+        failed.append(f&quot;{report[&#x27;empty_text&#x27;]} pieces without caption text&quot;)
+    if report[&quot;duplicate_locations&quot;] &gt; 0:
+        failed.append(f&quot;{report[&#x27;duplicate_locations&#x27;]} duplicate MIDI locations&quot;)
+    return failed
+
+
+def main() -&gt; None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument(&quot;--max-tokens&quot;, type=int, default=16384)   # keep whole pieces
+    ap.add_argument(&quot;--val-percent&quot;, type=int, default=2)
+    ap.add_argument(&quot;--limit&quot;, type=int, default=0)            # 0 = all 168k
+    ap.add_argument(&quot;--min-pieces&quot;, type=int, default=100)
+    ap.add_argument(&quot;--min-kept-ratio&quot;, type=float, default=0.80)
+    args = ap.parse_args()
+
+    rank, world = host_rank()
+    LOG.info(&quot;host %d of %d, %d cores&quot;, rank, world, os.cpu_count())
+    os.environ[&quot;PROMPTMUSIC_DATA&quot;] = str(WORK / &quot;dataset&quot;)
+    for d in (WORK, TOKENS_OUT, ENCODER_OUT):
+        d.mkdir(parents=True, exist_ok=True)
+
+    from promptmusic.config import load_config
+    from promptmusic.data.captions import load_caption_index, resolve_midi_path
+    from promptmusic.data.dataset import _pick_text
+    from promptmusic.data.download import download_source
+    from promptmusic.data.tokenizer import build_tokenizer
+
+    t0 = time.time()
+    # Same code path as `promptmusic download`; everything stays on the EBS volume.
+    # The archive&#x27;s top folder is stripped on extraction, so the MIDI shard
+    # folders land directly in dataset/midicaps/ and train.json stays in downloads/.
+    download_source(&quot;midicaps&quot;, data_root=WORK / &quot;dataset&quot;, downloads_root=WORK / &quot;downloads&quot;)
+    caption_file = WORK / &quot;downloads&quot; / &quot;train.json&quot;
+    midi_root = WORK / &quot;dataset&quot; / &quot;midicaps&quot;
+    LOG.info(&quot;downloaded + extracted in %.0fs&quot;, time.time() - t0)
+
+    cfg = load_config(&quot;sagemaker&quot;)
+    tok_cfg = cfg.section(&quot;tokenizer&quot;)
+    vocab = build_tokenizer(tok_cfg).vocab
+    records = load_caption_index(caption_file, limit=args.limit or None)
+    mine = records[rank::world]
+    jobs, missing_midi, empty_text = [], 0, 0
+    for r in mine:
+        path = resolve_midi_path(r.location, midi_root)
+        text, _ = _pick_text(r, &quot;en&quot;, True)
+        if path is None:
+            missing_midi += 1
+        elif not text.strip():
+            empty_text += 1
+        else:
+            jobs.append((str(path), text, r.location, float(r.duration or 0.0)))
+    LOG.info(&quot;%d records for this host: %d to tokenise, %d missing MIDI, %d empty text&quot;,
+             len(mine), len(jobs), missing_midi, empty_text)
+
+    bin_path = TOKENS_OUT / f&quot;tokens_{rank}.bin&quot;
+    idx_path = TOKENS_OUT / f&quot;index_{rank}.jsonl&quot;
+    offset = kept = 0
+    lengths, densities = [], []
+    errors, splits, token_hist = Counter(), Counter(), np.zeros(65536, dtype=np.int64)
+    seen = Counter()
+    t1 = time.time()
+    with bin_path.open(&quot;wb&quot;) as fbin, idx_path.open(&quot;w&quot;, encoding=&quot;utf-8&quot;) as fidx, \
+         mp.Pool(os.cpu_count(), initializer=_init, initargs=(tok_cfg, args.max_tokens)) as pool:
+        for i, res in enumerate(pool.imap(_encode, jobs, chunksize=32)):
+            if res[0] != &quot;ok&quot;:
+                errors[res[0] if res[0] == &quot;too_short&quot; else f&quot;error:{res[1]}&quot;] += 1
+                continue
+            _, ids, text, location, duration = res
+            fbin.write(ids.tobytes())
+            split = &quot;val&quot; if zlib.crc32(location.encode()) % 100 &lt; args.val_percent else &quot;train&quot;
+            fidx.write(json.dumps({&quot;offset&quot;: offset, &quot;length&quot;: int(ids.size), &quot;text&quot;: text,
+                                   &quot;location&quot;: location, &quot;split&quot;: split},
+                                  ensure_ascii=False) + &quot;\n&quot;)
+            offset += int(ids.size)
+            kept += 1
+            splits[split] += 1
+            seen[location] += 1
+            lengths.append(int(ids.size))
+            if duration &gt; 0:
+                densities.append(ids.size / duration)
+            token_hist += np.bincount(ids, minlength=65536)
+            if (i + 1) % 2000 == 0:
+                LOG.info(&quot;tokenised %d/%d (kept %d, %d tokens, %.0f files/s)&quot;,
+                         i + 1, len(jobs), kept, offset, (i + 1) / (time.time() - t1))
+
+    lengths_a = np.asarray(lengths or [0])
+    used = np.flatnonzero(token_hist)
+    report = {
+        &quot;rank&quot;: rank, &quot;hosts&quot;: world,
+        &quot;records&quot;: len(mine), &quot;missing_midi&quot;: missing_midi, &quot;empty_text&quot;: empty_text,
+        &quot;tokenise_errors&quot;: dict(errors), &quot;kept&quot;: kept,
+        &quot;kept_ratio&quot;: round(kept / max(1, len(mine)), 4),
+        &quot;split&quot;: dict(splits),
+        &quot;duplicate_locations&quot;: sum(1 for c in seen.values() if c &gt; 1),
+        &quot;tokens_total&quot;: offset, &quot;bytes&quot;: bin_path.stat().st_size,
+        &quot;length_percentiles&quot;: {str(p): int(np.percentile(lengths_a, p)) for p in (5, 25, 50, 75, 95, 99)},
+        &quot;share_longer_than_2560&quot;: round(float((lengths_a &gt; 2560).mean()), 4),
+        &quot;tokens_per_second_median&quot;: round(float(np.median(densities)), 1) if densities else None,
+        &quot;vocab_size&quot;: len(vocab), &quot;vocab_used&quot;: int(used.size),
+        &quot;max_token_id&quot;: int(used.max()) if used.size else -1,
+        &quot;seconds&quot;: round(time.time() - t0, 1),
+    }
+    failed = validate(report, args)
+    report[&quot;checks_failed&quot;] = failed
+    report[&quot;valid&quot;] = not failed
+    (TOKENS_OUT / f&quot;validation_{rank}.json&quot;).write_text(json.dumps(report, indent=2))
+    LOG.info(&quot;validation report: %s&quot;, json.dumps(report))
+
+    if rank == 0:
+        (TOKENS_OUT / &quot;vocab.json&quot;).write_text(json.dumps(vocab, ensure_ascii=False))
+        from transformers import AutoTokenizer, T5EncoderModel
+        T5EncoderModel.from_pretrained(&quot;google/mt5-base&quot;).save_pretrained(
+            ENCODER_OUT, safe_serialization=True)
+        AutoTokenizer.from_pretrained(&quot;google/mt5-base&quot;).save_pretrained(ENCODER_OUT)
+        LOG.info(&quot;encoder-only mT5 exported to %s&quot;, ENCODER_OUT)
+
+    if failed:
+        LOG.error(&quot;DATASET VALIDATION FAILED: %s&quot;, &quot;; &quot;.join(failed))
+        sys.exit(2)
+    LOG.info(&quot;dataset validation passed&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</code></pre></div>
+<div class="code"><div class="code-head"><span>infra/render.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/render.sh &lt;template.json&gt;  -- fill STAMP/ROLE_ARN/IMAGE_URI/BUCKET/LIMIT from the environment
+sed -e &quot;s|STAMP|$STAMP|g&quot; -e &quot;s|ROLE_ARN|$ROLE_ARN|g&quot; -e &quot;s|IMAGE_URI|$IMAGE_URI|g&quot; \
+    -e &quot;s|BUCKET|$BUCKET|g&quot; -e &quot;s|LIMIT|${LIMIT:-0}|g&quot; -e &quot;s|DATAVER|${DATAVER:-v1}|g&quot; -e &quot;s|STEPS|${STEPS:-null}|g&quot; &quot;$1&quot;</code></pre></div>
+<div class="code"><div class="code-head"><span>infra/prepare-job.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{
+  &quot;ProcessingJobName&quot;: &quot;pm-prepare-STAMP&quot;,
+  &quot;RoleArn&quot;: &quot;ROLE_ARN&quot;,
+  &quot;AppSpecification&quot;: {
+    &quot;ImageUri&quot;: &quot;IMAGE_URI&quot;,
+    &quot;ContainerEntrypoint&quot;: [&quot;python&quot;, &quot;/opt/program/sagemaker/entry/prepare.py&quot;],
+    &quot;ContainerArguments&quot;: [&quot;--max-tokens&quot;, &quot;16384&quot;, &quot;--val-percent&quot;, &quot;2&quot;, &quot;--limit&quot;, &quot;LIMIT&quot;]
+  },
+  &quot;ProcessingResources&quot;: {&quot;ClusterConfig&quot;: {&quot;InstanceCount&quot;: 2, &quot;InstanceType&quot;: &quot;ml.c5.2xlarge&quot;, &quot;VolumeSizeInGB&quot;: 60}},
+  &quot;ProcessingOutputConfig&quot;: {&quot;Outputs&quot;: [
+    {&quot;OutputName&quot;: &quot;tokens&quot;, &quot;S3Output&quot;: {&quot;S3Uri&quot;: &quot;s3://BUCKET/data/tokens/DATAVER/&quot;,
+      &quot;LocalPath&quot;: &quot;/opt/ml/processing/output/tokens&quot;, &quot;S3UploadMode&quot;: &quot;EndOfJob&quot;}},
+    {&quot;OutputName&quot;: &quot;encoder&quot;, &quot;S3Output&quot;: {&quot;S3Uri&quot;: &quot;s3://BUCKET/models/mt5-base-encoder/&quot;,
+      &quot;LocalPath&quot;: &quot;/opt/ml/processing/output/encoder&quot;, &quot;S3UploadMode&quot;: &quot;EndOfJob&quot;}}
+  ]},
+  &quot;StoppingCondition&quot;: {&quot;MaxRuntimeInSeconds&quot;: 14400},
+  &quot;Environment&quot;: {&quot;PYTHONUNBUFFERED&quot;: &quot;1&quot;},
+  &quot;Tags&quot;: [{&quot;Key&quot;: &quot;project&quot;, &quot;Value&quot;: &quot;promptmusic&quot;}]
+}</code></pre></div>
+<div class="code"><div class="code-head"><span>run + check</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+# small first (catches mistakes in ~8 min), then the real dataset
+for spec in &quot;2000 smoke&quot; &quot;20000 v1&quot;; do
+  set -- $spec; export LIMIT=$1 DATAVER=$2 STAMP=$(date +%Y%m%d-%H%M%S)
+  infra/render.sh infra/prepare-job.json &gt; /tmp/prepare.json
+  aws sagemaker create-processing-job --cli-input-json file:///tmp/prepare.json
+  aws sagemaker wait processing-job-completed-or-stopped --processing-job-name pm-prepare-$STAMP
+  aws sagemaker describe-processing-job --processing-job-name pm-prepare-$STAMP --query &quot;[ProcessingJobStatus,FailureReason]&quot;
+done
+aws s3 cp s3://$BUCKET/data/tokens/v1/validation_0.json - | python3 -m json.tool</code></pre></div>
+<h3>What the validation report contains (real output, host 0 of the 20 000-piece run)</h3>
+<div class="code"><div class="code-head"><span>s3://BUCKET/data/tokens/v1/validation_0.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{
+  &quot;rank&quot;: 0,
+  &quot;hosts&quot;: 2,
+  &quot;records&quot;: 10000,
+  &quot;missing_midi&quot;: 0,
+  &quot;empty_text&quot;: 0,
+  &quot;tokenise_errors&quot;: {
+    &quot;too_short&quot;: 3
+  },
+  &quot;kept&quot;: 9997,
+  &quot;kept_ratio&quot;: 0.9997,
+  &quot;split&quot;: {
+    &quot;train&quot;: 9799,
+    &quot;val&quot;: 198
+  },
+  &quot;duplicate_locations&quot;: 0,
+  &quot;tokens_total&quot;: 112970037,
+  &quot;bytes&quot;: 225940074,
+  &quot;length_percentiles&quot;: {
+    &quot;5&quot;: 729,
+    &quot;25&quot;: 5776,
+    &quot;50&quot;: 14362,
+    &quot;75&quot;: 16384,
+    &quot;95&quot;: 16384,
+    &quot;99&quot;: 16384
+  },
+  &quot;share_longer_than_2560&quot;: 0.8714,
+  &quot;tokens_per_second_median&quot;: 60.5,
+  &quot;vocab_size&quot;: 423,
+  &quot;vocab_used&quot;: 418,
+  &quot;max_token_id&quot;: 421,
+  &quot;seconds&quot;: 260.9,
+  &quot;checks_failed&quot;: [],
+  &quot;valid&quot;: true
+}</code></pre></div>
+<div class="note info"><strong>Why</strong> Checks that fail the job: fewer than <code>--min-pieces</code> pieces kept, a kept ratio below 0.80, a token id outside the vocabulary, no validation pieces, empty caption text, or duplicate MIDI files. <code>train_sm.py</code> re-checks the reports and refuses to train if any host failed.</div>
+</section>
+<section id="train"><h2>8. Training, evaluation and resume (Training job)</h2>
+<label class="done"><input type="checkbox" data-step="train"> Done</label>
+<div class="code"><div class="code-head"><span>sagemaker/entry/train_sm.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">&quot;&quot;&quot;SageMaker Training entry: dataset gate -&gt; promptmusic.train -&gt; package -&gt; evaluate.
+
+Container paths (fixed by SageMaker):
+    /opt/ml/input/config/hyperparameters.json   string -&gt; string overrides
+    /opt/ml/input/data/train/                   token shards + validation_*.json
+    /opt/ml/input/data/encoder/                 encoder-only mT5
+    /opt/ml/checkpoints/                        synced to S3 (spot resume)
+    /opt/ml/model/                              -&gt; model.tar.gz
+    /opt/ml/output/data/                        -&gt; output.tar.gz (samples, reports)
+    /opt/ml/output/failure                      -&gt; DescribeTrainingJob.FailureReason
+&quot;&quot;&quot;
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import sys
+import traceback
+from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;,
+                    stream=sys.stdout)
+LOG = logging.getLogger(&quot;train_sm&quot;)
+
+PREFIX = Path(&quot;/opt/ml&quot;)
+HP_FILE = PREFIX / &quot;input/config/hyperparameters.json&quot;
+CH_TRAIN = PREFIX / &quot;input/data/train&quot;
+CH_ENCODER = PREFIX / &quot;input/data/encoder&quot;
+CKPT = PREFIX / &quot;checkpoints&quot;
+MODEL = PREFIX / &quot;model&quot;
+OUT_DATA = PREFIX / &quot;output/data&quot;
+FAILURE = PREFIX / &quot;output/failure&quot;
+RUN = &quot;prompt_music_gen&quot;
+VOICE = &quot;facebook/mms-tts-tam&quot;
+
+EVAL_PROMPTS = [
+    &quot;a romantic tamil love song, gentle and emotional&quot;,
+    &quot;an upbeat pop song with drums, bass and electric guitar&quot;,
+    &quot;a calm piano ballad in a minor key&quot;,
+    &quot;a fast electronic dance track with synth lead&quot;,
+]
+
+
+def hyperparameters() -&gt; dict[str, str]:
+    return json.loads(HP_FILE.read_text()) if HP_FILE.exists() else {}
+
+
+def dataset_gate() -&gt; dict:
+    &quot;&quot;&quot;Refuse to train on shards whose validation report failed.&quot;&quot;&quot;
+    reports = [json.loads(p.read_text()) for p in sorted(CH_TRAIN.glob(&quot;validation_*.json&quot;))]
+    if not reports:
+        raise RuntimeError(f&quot;no validation_*.json in {CH_TRAIN}; run the prepare job first&quot;)
+    bad = [r for r in reports if not r.get(&quot;valid&quot;)]
+    if bad:
+        raise RuntimeError(f&quot;dataset validation failed: {[r[&#x27;checks_failed&#x27;] for r in bad]}&quot;)
+    summary = {
+        &quot;pieces&quot;: sum(r[&quot;kept&quot;] for r in reports),
+        &quot;tokens&quot;: sum(r[&quot;tokens_total&quot;] for r in reports),
+        &quot;train&quot;: sum(r[&quot;split&quot;].get(&quot;train&quot;, 0) for r in reports),
+        &quot;val&quot;: sum(r[&quot;split&quot;].get(&quot;val&quot;, 0) for r in reports),
+    }
+    LOG.info(&quot;dataset gate passed: %s&quot;, summary)
+    return summary
+
+
+def main() -&gt; None:
+    import torch
+
+    LOG.info(&quot;torch %s, cuda %s, gpu %s&quot;, torch.__version__, torch.version.cuda,
+             torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
+    hp = hyperparameters()
+    config = hp.pop(&quot;config&quot;, &quot;sagemaker&quot;)
+    num_eval = int(hp.pop(&quot;eval_samples&quot;, len(EVAL_PROMPTS)))
+    data_summary = dataset_gate()
+
+    os.environ[&quot;PROMPTMUSIC_TEXT_ENCODER&quot;] = str(CH_ENCODER)
+    overrides = [f&quot;paths.output_dir={CKPT}&quot;, f&quot;data.token_dir={CH_TRAIN}&quot;, &quot;train.device=cuda&quot;]
+    overrides += [f&quot;{k}={v}&quot; for k, v in hp.items()]
+
+    last = CKPT / RUN / &quot;checkpoints&quot; / &quot;last.pt&quot;
+    if last.exists():
+        LOG.info(&quot;resuming from %s (spot restart or re-run)&quot;, last)
+        overrides.append(f&quot;train.resume={last}&quot;)
+    LOG.info(&quot;overrides: %s&quot;, overrides)
+
+    from promptmusic.train import train
+    summary = train(config, overrides=overrides)
+    LOG.info(&quot;train summary: %s&quot;, json.dumps(summary, default=str))
+    if torch.cuda.is_available():
+        LOG.info(&quot;peak GPU memory: %.2f GB&quot;, torch.cuda.max_memory_allocated() / 1e9)
+
+    best = CKPT / RUN / &quot;checkpoints&quot; / &quot;best.pt&quot;
+    package(best if best.exists() else last)
+    metrics = evaluate(MODEL / &quot;model.pt&quot;, num_eval)
+    metrics[&quot;dataset&quot;] = data_summary
+    metrics[&quot;train&quot;] = {k: v for k, v in summary.items() if k != &quot;history&quot;}
+    text = json.dumps(metrics, indent=2, default=str)
+    (MODEL / &quot;evaluation.json&quot;).write_text(text)
+    (OUT_DATA / &quot;evaluation.json&quot;).write_text(text)
+    upload_eval(MODEL / &quot;evaluation.json&quot;)
+
+
+def package(ckpt: Path) -&gt; None:
+    &quot;&quot;&quot;model.pt (no optimizer/scheduler) + encoder + Tamil voice = self-contained model dir.&quot;&quot;&quot;
+    import torch
+    from huggingface_hub import snapshot_download
+
+    payload = torch.load(ckpt, map_location=&quot;cpu&quot;, weights_only=False)
+    for key in [k for k in payload if k.startswith((&quot;optimizer&quot;, &quot;scheduler&quot;))]:
+        payload.pop(key)
+    MODEL.mkdir(parents=True, exist_ok=True)
+    torch.save(payload, MODEL / &quot;model.pt&quot;)
+    shutil.copytree(CH_ENCODER, MODEL / &quot;encoder&quot;, dirs_exist_ok=True)
+    snapshot_download(VOICE, local_dir=MODEL / &quot;voice&quot;,
+                      allow_patterns=[&quot;*.json&quot;, &quot;*.safetensors&quot;, &quot;*.txt&quot;, &quot;*.model&quot;])
+    LOG.info(&quot;packaged %s from %s (%.0f MB)&quot;, MODEL / &quot;model.pt&quot;, ckpt.name,
+             (MODEL / &quot;model.pt&quot;).stat().st_size / 1e6)
+
+
+def evaluate(model_pt: Path, n: int) -&gt; dict:
+    from promptmusic.evaluate import evaluate_files
+    from promptmusic.generate import generate
+
+    out = OUT_DATA / &quot;samples&quot;
+    out.mkdir(parents=True, exist_ok=True)
+    mids = []
+    for i, prompt in enumerate(EVAL_PROMPTS[:n]):
+        res = generate(prompt, checkpoint=model_pt, out_dir=out, max_new_tokens=1600,
+                       render_audio=False, seed=1000 + i, device=&quot;cuda&quot;)
+        mids += [r.midi_path for r in res if r.midi_path]
+    result = evaluate_files(mids, keep_per_file=True)
+    metrics = result.to_dict()
+    LOG.info(&quot;evaluation: %s&quot;, json.dumps(metrics, default=str)[:3000])
+    return metrics
+
+
+def upload_eval(path: Path) -&gt; None:
+    uri = os.environ.get(&quot;EVAL_S3_URI&quot;)
+    if not uri:
+        return
+    import boto3
+    bucket, key = uri.removeprefix(&quot;s3://&quot;).split(&quot;/&quot;, 1)
+    boto3.client(&quot;s3&quot;).upload_file(str(path), bucket, key)
+    LOG.info(&quot;uploaded %s&quot;, uri)
+
+
+if __name__ == &quot;__main__&quot;:
+    try:
+        OUT_DATA.mkdir(parents=True, exist_ok=True)
+        main()
+    except Exception:
+        FAILURE.parent.mkdir(parents=True, exist_ok=True)
+        FAILURE.write_text(traceback.format_exc()[-1000:])
+        LOG.exception(&quot;training job failed&quot;)
+        sys.exit(1)</code></pre></div>
+<div class="code"><div class="code-head"><span>infra/train-smoke.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{
+  &quot;TrainingJobName&quot;: &quot;pm-train-STAMP&quot;,
+  &quot;RoleArn&quot;: &quot;ROLE_ARN&quot;,
+  &quot;AlgorithmSpecification&quot;: {
+    &quot;TrainingImage&quot;: &quot;IMAGE_URI&quot;,
+    &quot;TrainingInputMode&quot;: &quot;File&quot;,
+    &quot;MetricDefinitions&quot;: [
+      {&quot;Name&quot;: &quot;train:loss&quot;,  &quot;Regex&quot;: &quot;loss ([0-9.]+)  ppl&quot;},
+      {&quot;Name&quot;: &quot;val:loss&quot;,    &quot;Regex&quot;: &quot;validation loss ([0-9.]+)&quot;},
+      {&quot;Name&quot;: &quot;train:tok_s&quot;, &quot;Regex&quot;: &quot;([0-9]+) tok/s&quot;}
+    ]
+  },
+  &quot;HyperParameters&quot;: {&quot;config&quot;: &quot;sagemaker&quot;, &quot;train.max_steps&quot;: &quot;200&quot;, &quot;train.log_every&quot;: &quot;10&quot;,
+                      &quot;train.val_every&quot;: &quot;100&quot;, &quot;train.save_every&quot;: &quot;100&quot;, &quot;eval_samples&quot;: &quot;2&quot;},
+  &quot;InputDataConfig&quot;: [
+    {&quot;ChannelName&quot;: &quot;train&quot;, &quot;DataSource&quot;: {&quot;S3DataSource&quot;: {&quot;S3DataType&quot;: &quot;S3Prefix&quot;,
+      &quot;S3Uri&quot;: &quot;s3://BUCKET/data/tokens/DATAVER/&quot;, &quot;S3DataDistributionType&quot;: &quot;FullyReplicated&quot;}}},
+    {&quot;ChannelName&quot;: &quot;encoder&quot;, &quot;DataSource&quot;: {&quot;S3DataSource&quot;: {&quot;S3DataType&quot;: &quot;S3Prefix&quot;,
+      &quot;S3Uri&quot;: &quot;s3://BUCKET/models/mt5-base-encoder/&quot;, &quot;S3DataDistributionType&quot;: &quot;FullyReplicated&quot;}}}
+  ],
+  &quot;OutputDataConfig&quot;: {&quot;S3OutputPath&quot;: &quot;s3://BUCKET/training-output/&quot;},
+  &quot;ResourceConfig&quot;: {&quot;InstanceType&quot;: &quot;ml.g5.xlarge&quot;, &quot;InstanceCount&quot;: 1, &quot;VolumeSizeInGB&quot;: 50},
+  &quot;StoppingCondition&quot;: {&quot;MaxRuntimeInSeconds&quot;: 3600},
+  &quot;Environment&quot;: {&quot;EVAL_S3_URI&quot;: &quot;s3://BUCKET/eval/pm-train-STAMP/evaluation.json&quot;, &quot;PYTHONUNBUFFERED&quot;: &quot;1&quot;},
+  &quot;Tags&quot;: [{&quot;Key&quot;: &quot;project&quot;, &quot;Value&quot;: &quot;promptmusic&quot;}]
+}</code></pre></div>
+<div class="code"><div class="code-head"><span>infra/train-full.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{
+  &quot;TrainingJobName&quot;: &quot;pm-train-STAMP&quot;,
+  &quot;RoleArn&quot;: &quot;ROLE_ARN&quot;,
+  &quot;AlgorithmSpecification&quot;: {
+    &quot;TrainingImage&quot;: &quot;IMAGE_URI&quot;,
+    &quot;TrainingInputMode&quot;: &quot;File&quot;,
+    &quot;MetricDefinitions&quot;: [
+      {
+        &quot;Name&quot;: &quot;train:loss&quot;,
+        &quot;Regex&quot;: &quot;loss ([0-9.]+)  ppl&quot;
+      },
+      {
+        &quot;Name&quot;: &quot;val:loss&quot;,
+        &quot;Regex&quot;: &quot;validation loss ([0-9.]+)&quot;
+      },
+      {
+        &quot;Name&quot;: &quot;train:tok_s&quot;,
+        &quot;Regex&quot;: &quot;([0-9]+) tok/s&quot;
+      }
+    ]
+  },
+  &quot;HyperParameters&quot;: {
+    &quot;config&quot;: &quot;sagemaker&quot;,
+    &quot;train.max_steps&quot;: &quot;STEPS&quot;
+  },
+  &quot;InputDataConfig&quot;: [
+    {
+      &quot;ChannelName&quot;: &quot;train&quot;,
+      &quot;DataSource&quot;: {
+        &quot;S3DataSource&quot;: {
+          &quot;S3DataType&quot;: &quot;S3Prefix&quot;,
+          &quot;S3Uri&quot;: &quot;s3://BUCKET/data/tokens/DATAVER/&quot;,
+          &quot;S3DataDistributionType&quot;: &quot;FullyReplicated&quot;
+        }
+      }
+    },
+    {
+      &quot;ChannelName&quot;: &quot;encoder&quot;,
+      &quot;DataSource&quot;: {
+        &quot;S3DataSource&quot;: {
+          &quot;S3DataType&quot;: &quot;S3Prefix&quot;,
+          &quot;S3Uri&quot;: &quot;s3://BUCKET/models/mt5-base-encoder/&quot;,
+          &quot;S3DataDistributionType&quot;: &quot;FullyReplicated&quot;
+        }
+      }
+    }
+  ],
+  &quot;OutputDataConfig&quot;: {
+    &quot;S3OutputPath&quot;: &quot;s3://BUCKET/training-output/&quot;
+  },
+  &quot;ResourceConfig&quot;: {
+    &quot;InstanceType&quot;: &quot;ml.g5.xlarge&quot;,
+    &quot;InstanceCount&quot;: 1,
+    &quot;VolumeSizeInGB&quot;: 50
+  },
+  &quot;StoppingCondition&quot;: {
+    &quot;MaxRuntimeInSeconds&quot;: 172800,
+    &quot;MaxWaitTimeInSeconds&quot;: 259200
+  },
+  &quot;Environment&quot;: {
+    &quot;EVAL_S3_URI&quot;: &quot;s3://BUCKET/eval/pm-train-STAMP/evaluation.json&quot;,
+    &quot;PYTHONUNBUFFERED&quot;: &quot;1&quot;
+  },
+  &quot;Tags&quot;: [
+    {
+      &quot;Key&quot;: &quot;project&quot;,
+      &quot;Value&quot;: &quot;promptmusic&quot;
+    }
+  ],
+  &quot;EnableManagedSpotTraining&quot;: true,
+  &quot;CheckpointConfig&quot;: {
+    &quot;S3Uri&quot;: &quot;s3://BUCKET/checkpoints/pm-train-STAMP/&quot;,
+    &quot;LocalPath&quot;: &quot;/opt/ml/checkpoints&quot;
+  }
+}</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+# smoke: 200 steps on the 2 000-piece set (~8 min, ~$0.25)
+export STAMP=$(date +%Y%m%d-%H%M%S) DATAVER=smoke
+infra/render.sh infra/train-smoke.json &gt; /tmp/train.json
+aws sagemaker create-training-job --cli-input-json file:///tmp/train.json
+aws logs tail /aws/sagemaker/TrainingJobs --log-stream-name-prefix pm-train-$STAMP --follow
+
+# full: 20 000 pieces, 3 000 steps. Spot template; for on-demand flip the two fields:
+export STAMP=$(date +%Y%m%d-%H%M%S) DATAVER=v1 STEPS=3000
+infra/render.sh infra/train-full.json | python3 -c &quot;
+import json,sys; j=json.load(sys.stdin)
+j[&#x27;EnableManagedSpotTraining&#x27;]=False; j[&#x27;StoppingCondition&#x27;]={&#x27;MaxRuntimeInSeconds&#x27;:14400}
+print(json.dumps(j))&quot; &gt; /tmp/train.json
+aws sagemaker create-training-job --cli-input-json file:///tmp/train.json</code></pre></div>
+<h3>Resume after an interruption (validated)</h3>
+<p>A spot interruption restarts the same job automatically. To resume by hand (after a stop, a crash, or when moving to
+another instance type), start a new job whose <code>CheckpointConfig.S3Uri</code> is the old job's prefix:</p>
+<div class="code"><div class="code-head"><span>resume</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">OLD=pm-train-20261102-101828                      # the job that stopped
+export STAMP=$(date +%Y%m%d-%H%M%S) DATAVER=v1 STEPS=3000
+infra/render.sh infra/train-full.json | python3 -c &quot;
+import json,sys; j=json.load(sys.stdin)
+j[&#x27;EnableManagedSpotTraining&#x27;]=False; j[&#x27;StoppingCondition&#x27;]={&#x27;MaxRuntimeInSeconds&#x27;:14400}
+j[&#x27;CheckpointConfig&#x27;][&#x27;S3Uri&#x27;]=&#x27;s3://$BUCKET/checkpoints/$OLD/&#x27;
+j[&#x27;ResourceConfig&#x27;][&#x27;InstanceType&#x27;]=&#x27;ml.g6.xlarge&#x27;          # optional: a different GPU
+print(json.dumps(j))&quot; &gt; /tmp/train.json
+aws sagemaker create-training-job --cli-input-json file:///tmp/train.json
+# the log shows:  resuming from /opt/ml/checkpoints/prompt_music_gen/checkpoints/last.pt</code></pre></div>
+<p><b>Check:</b> <code>FinalMetricDataList</code> has <code>val:loss</code>; <code>s3://$BUCKET/eval/&lt;job&gt;/evaluation.json</code>
+exists; <code>output.tar.gz</code> holds the MIDI samples.</p>
+</section>
+<section id="registry"><h2>9. Register and approve the model</h2>
+<label class="done"><input type="checkbox" data-step="registry"> Done</label>
+<div class="code"><div class="code-head"><span>infra/register.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/register.sh &lt;training-job-name&gt;  -- register + approve; prints the package ARN
+set -euo pipefail
+source &quot;$(dirname &quot;$0&quot;)/env.sh&quot;
+JOB=$1
+MODEL_DATA=$(aws sagemaker describe-training-job --training-job-name $JOB --query ModelArtifacts.S3ModelArtifacts --output text)
+PKG=$(aws sagemaker create-model-package --model-package-group-name $PROJECT \
+  --model-approval-status PendingManualApproval \
+  --inference-specification &quot;{
+    \&quot;Containers\&quot;:[{\&quot;Image\&quot;:\&quot;$IMAGE_URI\&quot;,\&quot;ModelDataUrl\&quot;:\&quot;$MODEL_DATA\&quot;,
+      \&quot;Environment\&quot;:{\&quot;PROMPTMUSIC_TEXT_ENCODER\&quot;:\&quot;/opt/ml/model/encoder\&quot;}}],
+    \&quot;SupportedContentTypes\&quot;:[\&quot;application/json\&quot;],
+    \&quot;SupportedResponseMIMETypes\&quot;:[\&quot;application/zip\&quot;],
+    \&quot;SupportedRealtimeInferenceInstanceTypes\&quot;:[\&quot;ml.g5.xlarge\&quot;,\&quot;ml.g6.xlarge\&quot;,\&quot;ml.g5.2xlarge\&quot;,\&quot;ml.c6i.2xlarge\&quot;,\&quot;ml.c6i.4xlarge\&quot;,\&quot;ml.m5.2xlarge\&quot;]}&quot; \
+  --model-metrics &quot;{\&quot;ModelQuality\&quot;:{\&quot;Statistics\&quot;:{\&quot;ContentType\&quot;:\&quot;application/json\&quot;,
+    \&quot;S3Uri\&quot;:\&quot;s3://$BUCKET/eval/$JOB/evaluation.json\&quot;}}}&quot; --query ModelPackageArn --output text)
+aws sagemaker update-model-package --model-package-arn $PKG --model-approval-status Approved &gt;/dev/null
+echo $PKG</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+aws sagemaker create-model-package-group --model-package-group-name $PROJECT \
+  --model-package-group-description &quot;prompt -&gt; MIDI -&gt; sung WAV&quot;          # once
+PKG=$(infra/register.sh pm-train-&lt;stamp&gt;) &amp;&amp; echo $PKG</code></pre></div>
+<div class="note warn"><strong>Watch out</strong> <code>SupportedRealtimeInferenceInstanceTypes</code> is enforced: an endpoint can only use instance types the package lists (V12). List every type you might fall back to.</div>
+</section>
+<section id="serve"><h2>10. Inference server</h2>
+<label class="done"><input type="checkbox" data-step="serve"> Done</label>
+<div class="code"><div class="code-head"><span>sagemaker/entry/serve.py</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-python">&quot;&quot;&quot;SageMaker async endpoint: prompt (+ lyrics) -&gt; zip of raw MIDI, arranged MIDI, WAV, meta.
+
+Contract: listen on 8080, GET /ping -&gt; 200 when ready, POST /invocations.
+The model is loaded once per container (generate() would otherwise reload
+the 1.3 GB checkpoint on every request).
+&quot;&quot;&quot;
+from __future__ import annotations
+
+import functools
+import io
+import json
+import logging
+import os
+import sys
+import tempfile
+import time
+import zipfile
+from pathlib import Path
+
+import torch
+from flask import Flask, Response, request
+
+logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;,
+                    stream=sys.stdout)
+LOG = logging.getLogger(&quot;serve&quot;)
+
+MODEL_DIR = Path(os.environ.get(&quot;SM_MODEL_DIR&quot;, &quot;/opt/ml/model&quot;))
+MODEL_PT = str(MODEL_DIR / &quot;model.pt&quot;)
+VOICE = str(MODEL_DIR / &quot;voice&quot;) if (MODEL_DIR / &quot;voice&quot;).is_dir() else &quot;facebook/mms-tts-tam&quot;
+os.environ.setdefault(&quot;PROMPTMUSIC_TEXT_ENCODER&quot;, str(MODEL_DIR / &quot;encoder&quot;))
+DEVICE = &quot;cuda&quot; if torch.cuda.is_available() else &quot;cpu&quot;
+TOKENS_PER_SECOND = 40          # measured MidiCaps density
+MAX_SECONDS = 64                # 2560 training tokens / 40
+LYRICS_DIR = Path(&quot;/opt/program/data/lyrics&quot;)
+
+import promptmusic.generate as G  # noqa: E402
+from promptmusic.arrange import arrange_midi  # noqa: E402
+from promptmusic.render import render_midi  # noqa: E402
+from promptmusic.singing import sing_song  # noqa: E402
+
+G._load_for_inference = functools.lru_cache(maxsize=1)(G._load_for_inference)
+_t = time.time()
+G._load_for_inference(MODEL_PT, None, DEVICE)
+LOG.info(&quot;model loaded on %s in %.1fs (voice: %s)&quot;, DEVICE, time.time() - _t, VOICE)
+
+app = Flask(__name__)
+
+
+@app.get(&quot;/ping&quot;)
+def ping():
+    return Response(&quot;ok&quot;, status=200)
+
+
+@app.post(&quot;/invocations&quot;)
+def invocations():
+    req = json.loads(request.get_data().decode(&quot;utf-8&quot;))
+    prompt = req[&quot;prompt&quot;]
+    lyrics = req.get(&quot;lyrics&quot;, &quot;&quot;)
+    if not lyrics and req.get(&quot;lyrics_file&quot;):           # a file baked into the image
+        name = Path(req[&quot;lyrics_file&quot;]).name              # no path traversal
+        lyrics = (LYRICS_DIR / name).read_text(encoding=&quot;utf-8&quot;)
+    language = req.get(&quot;language&quot;, &quot;en&quot;)
+    duration = min(float(req.get(&quot;duration&quot;, 45)), MAX_SECONDS)
+    sing = bool(req.get(&quot;sing&quot;, bool(lyrics)))
+    t0 = time.time()
+    LOG.info(&quot;request: %s&quot;, json.dumps({k: v for k, v in req.items() if k != &quot;lyrics&quot;}, ensure_ascii=False))
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        res = G.generate(
+            prompt, checkpoint=MODEL_PT, out_dir=td, render_audio=False,
+            max_new_tokens=int(duration * TOKENS_PER_SECOND), lyrics=lyrics, language=language,
+            seed=req.get(&quot;seed&quot;), device=DEVICE,
+            temperature=float(req.get(&quot;temperature&quot;, 0.95)), top_p=float(req.get(&quot;top_p&quot;, 0.92)),
+        )[0]
+        arranged, report = arrange_midi(res.midi_path, td / &quot;arranged.mid&quot;)
+        wav = td / &quot;song.wav&quot;
+        sung = None
+        if sing and lyrics:
+            sung = sing_song(arranged, lyrics=lyrics, out_path=wav, voice=VOICE, device=&quot;cpu&quot;)
+        else:
+            render_midi(arranged, wav)
+
+        meta = {
+            &quot;prompt&quot;: prompt, &quot;language&quot;: language, &quot;requested_seconds&quot;: duration,
+            &quot;num_tokens&quot;: res.num_tokens, &quot;num_notes&quot;: res.num_notes,
+            &quot;midi_seconds&quot;: res.duration_sec, &quot;sung&quot;: bool(sung),
+            &quot;sing&quot;: sung.to_dict() if sung is not None else None,
+            &quot;arrangement&quot;: report.to_dict() if hasattr(report, &quot;to_dict&quot;) else str(report),
+            &quot;compute_seconds&quot;: round(time.time() - t0, 1), &quot;device&quot;: DEVICE,
+        }
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, &quot;w&quot;, zipfile.ZIP_DEFLATED) as z:
+            z.write(res.midi_path, &quot;raw.mid&quot;)
+            z.write(arranged, &quot;arranged.mid&quot;)
+            z.write(wav, &quot;song.wav&quot;)
+            z.writestr(&quot;meta.json&quot;, json.dumps(meta, ensure_ascii=False, indent=2, default=str))
+    LOG.info(&quot;done in %.1fs&quot;, time.time() - t0)
+    return Response(buf.getvalue(), status=200, mimetype=&quot;application/zip&quot;)</code></pre></div>
+<div class="note info"><strong>Why</strong> <code>lyrics_file</code> names a lyrics file already baked into the image (<code>data/lyrics/</code>), so a request is only a prompt. Inline <code>lyrics</code> also works.</div>
+</section>
+<section id="deploy"><h2>11. Deploy the async endpoint and scale to zero</h2>
+<label class="done"><input type="checkbox" data-step="deploy"> Done</label>
+<div class="code"><div class="code-head"><span>infra/deploy.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/deploy.sh &lt;model-package-arn&gt;  -- create or update the async endpoint
+#
+# Tries each instance type in INSTANCE_TYPES in order until one gets capacity.
+# Run infra/autoscale.sh afterwards: autoscaling must be removed before an
+# update that changes the instance type, so this script removes it.
+set -euo pipefail
+source &quot;$(dirname &quot;$0&quot;)/env.sh&quot;
+PKG=$1; EP=${EP:-${PROJECT}-async}
+INSTANCE_TYPES=${INSTANCE_TYPES:-&quot;ml.g5.xlarge ml.g6.xlarge ml.c6i.2xlarge&quot;}   # GPU first, CPU last
+RID=endpoint/$EP/variant/AllTraffic; DIM=sagemaker:variant:DesiredInstanceCount
+
+EXISTS=0; aws sagemaker describe-endpoint --endpoint-name $EP &gt;/dev/null 2&gt;&amp;1 &amp;&amp; EXISTS=1
+if [ $EXISTS = 1 ]; then
+  # &quot;The variant(s) must be deregistered as scalable targets ... before they can
+  #  ... have their instance type updated&quot;
+  aws application-autoscaling deregister-scalable-target --service-namespace sagemaker \
+    --resource-id $RID --scalable-dimension $DIM 2&gt;/dev/null &amp;&amp; echo &quot;autoscaling removed (re-run infra/autoscale.sh)&quot; || true
+  aws cloudwatch delete-alarms --alarm-names $EP-has-backlog
+fi
+
+for IT in $INSTANCE_TYPES; do
+  NAME=pm-$(date +%Y%m%d-%H%M%S)
+  aws sagemaker create-model --model-name $NAME --execution-role-arn $ROLE_ARN \
+    --primary-container ModelPackageName=$PKG &gt;/dev/null
+  # InferenceAmiVersion: the default GPU hosting AMI has driver 470 (CUDA 11.4); torch 2.6
+  # needs 12.x. GPU types only - CPU instances reject a GPU AMI.
+  AMI=&quot;&quot;; case $IT in ml.g*|ml.p*) AMI=&quot;\&quot;InferenceAmiVersion\&quot;:\&quot;al2-ami-sagemaker-inference-gpu-3-1\&quot;,&quot;;; esac
+  aws sagemaker create-endpoint-config --endpoint-config-name $NAME \
+    --production-variants &quot;[{\&quot;VariantName\&quot;:\&quot;AllTraffic\&quot;,\&quot;ModelName\&quot;:\&quot;$NAME\&quot;,
+       \&quot;InstanceType\&quot;:\&quot;$IT\&quot;,\&quot;InitialInstanceCount\&quot;:1, $AMI
+       \&quot;ModelDataDownloadTimeoutInSeconds\&quot;:1200,\&quot;ContainerStartupHealthCheckTimeoutInSeconds\&quot;:1200}]&quot; \
+    --async-inference-config &quot;{\&quot;OutputConfig\&quot;:{\&quot;S3OutputPath\&quot;:\&quot;s3://$BUCKET/async/out/\&quot;,
+       \&quot;S3FailurePath\&quot;:\&quot;s3://$BUCKET/async/fail/\&quot;},
+       \&quot;ClientConfig\&quot;:{\&quot;MaxConcurrentInvocationsPerInstance\&quot;:1}}&quot; &gt;/dev/null
+  echo &quot;trying $IT ($NAME)&quot;
+  if [ $EXISTS = 1 ]; then
+    aws sagemaker update-endpoint --endpoint-name $EP --endpoint-config-name $NAME &gt;/dev/null
+  else
+    aws sagemaker create-endpoint --endpoint-name $EP --endpoint-config-name $NAME &gt;/dev/null
+  fi
+  sleep 30
+  aws sagemaker wait endpoint-in-service --endpoint-name $EP 2&gt;/dev/null || true
+  # A failed UPDATE rolls back and is InService again on the OLD config; a failed CREATE is Failed.
+  read -r STATUS LIVE &lt; &lt;(aws sagemaker describe-endpoint --endpoint-name $EP \
+    --query &quot;[EndpointStatus,EndpointConfigName]&quot; --output text)
+  if [ &quot;$STATUS&quot; = InService ] &amp;&amp; [ &quot;$LIVE&quot; = &quot;$NAME&quot; ]; then
+    echo &quot;InService on $LIVE ($IT)&quot;; exit 0
+  fi
+  echo &quot;  failed on $IT: $(aws sagemaker describe-endpoint --endpoint-name $EP --query FailureReason --output text | cut -c1-160)&quot;
+  if [ &quot;$STATUS&quot; = Failed ]; then aws sagemaker delete-endpoint --endpoint-name $EP; sleep 20; EXISTS=0; fi
+done
+echo &quot;DEPLOY FAILED on all of: $INSTANCE_TYPES&quot;; exit 1</code></pre></div>
+<div class="code"><div class="code-head"><span>infra/autoscale.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/autoscale.sh  -- async endpoint: 1 -&gt; 0 when idle, 0 -&gt; 1 when a request arrives
+set -euo pipefail
+source &quot;$(dirname &quot;$0&quot;)/env.sh&quot;
+EP=${EP:-${PROJECT}-async}; RID=endpoint/$EP/variant/AllTraffic
+DIM=sagemaker:variant:DesiredInstanceCount
+aws application-autoscaling register-scalable-target --service-namespace sagemaker \
+  --resource-id $RID --scalable-dimension $DIM --min-capacity 0 --max-capacity 1
+aws application-autoscaling put-scaling-policy --policy-name backlog-tracking \
+  --service-namespace sagemaker --resource-id $RID --scalable-dimension $DIM \
+  --policy-type TargetTrackingScaling --query PolicyARN --output text \
+  --target-tracking-scaling-policy-configuration &quot;{\&quot;TargetValue\&quot;:1.0,
+    \&quot;CustomizedMetricSpecification\&quot;:{\&quot;MetricName\&quot;:\&quot;ApproximateBacklogSizePerInstance\&quot;,
+      \&quot;Namespace\&quot;:\&quot;AWS/SageMaker\&quot;,\&quot;Dimensions\&quot;:[{\&quot;Name\&quot;:\&quot;EndpointName\&quot;,\&quot;Value\&quot;:\&quot;$EP\&quot;}],
+      \&quot;Statistic\&quot;:\&quot;Average\&quot;},\&quot;ScaleInCooldown\&quot;:900,\&quot;ScaleOutCooldown\&quot;:60}&quot;
+STEP_ARN=$(aws application-autoscaling put-scaling-policy --policy-name scale-from-zero \
+  --service-namespace sagemaker --resource-id $RID --scalable-dimension $DIM --policy-type StepScaling \
+  --step-scaling-policy-configuration &#x27;{&quot;AdjustmentType&quot;:&quot;ChangeInCapacity&quot;,&quot;MetricAggregationType&quot;:&quot;Average&quot;,&quot;Cooldown&quot;:300,&quot;StepAdjustments&quot;:[{&quot;MetricIntervalLowerBound&quot;:0,&quot;ScalingAdjustment&quot;:1}]}&#x27; \
+  --query PolicyARN --output text)
+aws cloudwatch put-metric-alarm --alarm-name $EP-has-backlog \
+  --namespace AWS/SageMaker --metric-name HasBacklogWithoutCapacity \
+  --dimensions Name=EndpointName,Value=$EP --statistic Average --period 60 \
+  --evaluation-periods 1 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold \
+  --treat-missing-data notBreaching --alarm-actions $STEP_ARN
+echo &quot;autoscaling on $EP: min 0, max 1&quot;</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">source infra/env.sh
+export STAMP=$(date +%Y%m%d-%H%M%S)
+infra/deploy.sh $PKG                                   # create or blue/green update
+INSTANCE_TYPE=ml.g6.xlarge infra/deploy.sh $PKG        # fallback when g5 has no capacity
+infra/autoscale.sh                                     # once per endpoint
+# scale to zero right now instead of waiting for the 15 min cooldown:
+aws sagemaker update-endpoint-weights-and-capacities --endpoint-name ${PROJECT}-async \
+  --desired-weights-and-capacities VariantName=AllTraffic,DesiredInstanceCount=0</code></pre></div>
+<div class="note info"><strong>Why</strong> In the validation run the final model is served from <b>ml.c6i.2xlarge (CPU)</b> because no GPU capacity was available. Song compute was 18 s (instrumental) and 61 s (sung) on CPU, about the same as on the GPU, because the TTS and mastering run on CPU anyway.</div>
+<div class="note warn"><strong>Watch out</strong> The default GPU hosting AMI has NVIDIA driver 470 (CUDA 11.4). With torch 2.6 the server silently falls back to CPU. <code>InferenceAmiVersion: al2-ami-sagemaker-inference-gpu-3-1</code> fixes it (V9). Check the log line <code>model loaded on cuda</code>.</div>
+<div class="note warn"><strong>Watch out</strong> A blue/green update needs a second instance while the old one serves. When the region has no capacity, the update rolls back and the endpoint is InService on the OLD config. <code>deploy.sh</code> checks the live config name and prints <code>FailureReason</code> (V11).</div>
+</section>
+<section id="invoke"><h2>12. Make music</h2>
+<label class="done"><input type="checkbox" data-step="invoke"> Done</label>
+<div class="code"><div class="code-head"><span>infra/invoke.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/invoke.sh &lt;request.json&gt; [out.zip]  -- async request, wait, download, unzip
+set -euo pipefail
+source &quot;$(dirname &quot;$0&quot;)/env.sh&quot;
+EP=${EP:-${PROJECT}-async}
+REQ=$1; OUTZIP=${2:-song.zip}
+KEY=async/in/req-$(date +%s).json
+aws s3 cp &quot;$REQ&quot; s3://$BUCKET/$KEY --content-type application/json --only-show-errors
+read -r OUT FAIL &lt; &lt;(aws sagemaker-runtime invoke-endpoint-async --endpoint-name $EP \
+  --input-location s3://$BUCKET/$KEY --content-type application/json \
+  --invocation-timeout-seconds 1800 --query &quot;[OutputLocation,FailureLocation]&quot; --output text)
+echo &quot;waiting for $OUT&quot;
+T0=$(date +%s)
+until aws s3 ls &quot;$OUT&quot; &gt;/dev/null 2&gt;&amp;1; do
+  if aws s3 ls &quot;$FAIL&quot; &gt;/dev/null 2&gt;&amp;1; then echo &quot;FAILED:&quot;; aws s3 cp &quot;$FAIL&quot; -; exit 1; fi
+  sleep 15
+done
+echo &quot;ready after $(( $(date +%s) - T0 )) s&quot;
+aws s3 cp &quot;$OUT&quot; &quot;$OUTZIP&quot; --only-show-errors
+rm -rf &quot;${OUTZIP%.zip}&quot; &amp;&amp; unzip -q -o &quot;$OUTZIP&quot; -d &quot;${OUTZIP%.zip}&quot; &amp;&amp; ls -la &quot;${OUTZIP%.zip}&quot;</code></pre></div>
+<div class="code"><div class="code-head"><span>requests/instrumental.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{&quot;prompt&quot;: &quot;a calm piano ballad with soft strings, slow and emotional&quot;, &quot;duration&quot;: 30, &quot;seed&quot;: 7}</code></pre></div>
+<div class="code"><div class="code-head"><span>requests/tamil_love_song.json</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-json">{&quot;prompt&quot;: &quot;an intimate tamil love ballad, soft voice, acoustic guitar, strings&quot;,
+ &quot;lyrics_file&quot;: &quot;ta_love_song.txt&quot;, &quot;language&quot;: &quot;ta&quot;, &quot;duration&quot;: 50, &quot;sing&quot;: true, &quot;seed&quot;: 7}</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">infra/invoke.sh requests/instrumental.json outputs/instrumental.zip
+infra/invoke.sh requests/tamil_love_song.json outputs/tamil.zip
+open outputs/tamil/song.wav            # macOS; also raw.mid, arranged.mid, meta.json</code></pre></div>
+<p>Real results from the validation run:</p>
+<table><thead><tr><th>Request</th><th>Model</th><th>Wait</th><th>Result</th></tr></thead><tbody><tr><td>instrumental (calm piano ballad)</td><td>smoke, 200 steps, ml.g5.xlarge GPU</td><td>17 s</td><td>36 s WAV, E minor, 14 → 7 instruments; ignored “piano”</td></tr><tr><td>Tamil love song (lyrics_file)</td><td>smoke, image v1 (before lyrics_file)</td><td>32 s</td><td>not sung: v1 image ignored <code>lyrics_file</code>, which is why v2 exists</td></tr><tr><td>instrumental</td><td>final, 3 000 steps, ml.c6i.2xlarge CPU</td><td>35 s</td><td>33 s MIDI, A minor, 2 instruments kept, 17.7 s compute</td></tr><tr><td>Tamil love song, sung</td><td>final, ml.c6i.2xlarge CPU</td><td>68 s</td><td>8 lines, 108 syllables on 37 melody notes, 6 phrases, 31 s mix, 60.5 s compute</td></tr><tr><td>instrumental from 0 instances</td><td>final, CPU</td><td>COLDSTART</td><td>scale-from-zero via <code>HasBacklogWithoutCapacity</code> alarm</td></tr></tbody></table>
+<div class="note tip"><strong>Tip</strong> When the endpoint is at 0 instances, the first request waits for a GPU to start (minutes). The scale-from-zero alarm needs one minute of backlog before it fires.</div>
+</section>
+<section id="orchestrate"><h2>13. One-command runs</h2>
+<label class="done"><input type="checkbox" data-step="orchestrate"> Done</label>
+<div class="code"><div class="code-head"><span>infra/run_all.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/run_all.sh [smoke|full]  -- prepare (if needed) -&gt; train -&gt; print next steps
+#   smoke: 2 000 pieces, 200 steps, on-demand      full: 20 000 pieces, STEPS (default 3000)
+set -euo pipefail
+cd &quot;$(dirname &quot;$0&quot;)/..&quot;
+source infra/env.sh
+MODE=${1:-smoke}
+if [ &quot;$MODE&quot; = smoke ]; then export LIMIT=2000 DATAVER=smoke; TEMPLATE=infra/train-smoke.json
+else export LIMIT=${LIMIT:-20000} DATAVER=${DATAVER:-v1} STEPS=${STEPS:-3000}; TEMPLATE=infra/train-full.json; fi
+
+if ! aws s3 ls s3://$BUCKET/data/tokens/$DATAVER/validation_0.json &gt;/dev/null 2&gt;&amp;1; then
+  J=pm-prepare-$STAMP
+  infra/render.sh infra/prepare-job.json &gt; /tmp/prepare.json
+  aws sagemaker create-processing-job --cli-input-json file:///tmp/prepare.json &gt;/dev/null
+  echo &quot;prepare: $J&quot;
+  aws sagemaker wait processing-job-completed-or-stopped --processing-job-name $J || true
+  aws sagemaker describe-processing-job --processing-job-name $J --query &quot;[ProcessingJobStatus,FailureReason]&quot; --output text
+fi
+
+J=pm-train-$STAMP
+infra/render.sh $TEMPLATE &gt; /tmp/train.json
+aws sagemaker create-training-job --cli-input-json file:///tmp/train.json &gt;/dev/null
+echo &quot;training: $J   (logs: aws logs tail /aws/sagemaker/TrainingJobs --log-stream-name-prefix $J --follow)&quot;
+aws sagemaker wait training-job-completed-or-stopped --training-job-name $J || true
+aws sagemaker describe-training-job --training-job-name $J \
+  --query &quot;[TrainingJobStatus,FailureReason,BillableTimeInSeconds,ModelArtifacts.S3ModelArtifacts]&quot; --output text
+echo &quot;next: listen to s3://$BUCKET/training-output/$J/output/output.tar.gz (samples), then&quot;
+echo &quot;      PKG=\$(infra/register.sh $J) &amp;&amp; infra/deploy.sh \$PKG &amp;&amp; infra/autoscale.sh&quot;</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">infra/run_all.sh smoke            # 2 000 pieces, 200 steps
+infra/run_all.sh full             # 20 000 pieces, 3 000 steps (spot template)</code></pre></div>
+<div class="note info"><strong>Why</strong> Every step in <code>run_all.sh</code> was validated on its own. The script only chains them. SageMaker Pipelines is the managed alternative once you retrain regularly; pin the SageMaker Python SDK major version if you use it (v2 and v3 differ).</div>
+</section>
+<section id="cleanup"><h2>14. Clean up</h2>
+<label class="done"><input type="checkbox" data-step="cleanup"> Done</label>
+<div class="code"><div class="code-head"><span>infra/cleanup.sh</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">#!/usr/bin/env bash
+# infra/cleanup.sh [--all]  -- stop paying for compute; --all also deletes data, image, roles
+set -euo pipefail
+source &quot;$(dirname &quot;$0&quot;)/env.sh&quot;
+EP=${EP:-${PROJECT}-async}
+aws application-autoscaling deregister-scalable-target --service-namespace sagemaker \
+  --resource-id endpoint/$EP/variant/AllTraffic \
+  --scalable-dimension sagemaker:variant:DesiredInstanceCount 2&gt;/dev/null || true
+aws cloudwatch delete-alarms --alarm-names $EP-has-backlog
+aws sagemaker delete-endpoint --endpoint-name $EP 2&gt;/dev/null || true
+for c in $(aws sagemaker list-endpoint-configs --name-contains pm- --query &quot;EndpointConfigs[].EndpointConfigName&quot; --output text); do
+  aws sagemaker delete-endpoint-config --endpoint-config-name $c; done
+for m in $(aws sagemaker list-models --name-contains pm- --query &quot;Models[].ModelName&quot; --output text); do
+  aws sagemaker delete-model --model-name $m; done
+echo &quot;running jobs (should be empty):&quot;
+aws sagemaker list-training-jobs --status-equals InProgress --query &quot;TrainingJobSummaries[].TrainingJobName&quot; --output text
+aws sagemaker list-processing-jobs --status-equals InProgress --query &quot;ProcessingJobSummaries[].ProcessingJobName&quot; --output text
+[ &quot;${1:-}&quot; = &quot;--all&quot; ] || { echo &quot;compute stopped; data, image and registry kept&quot;; exit 0; }
+
+# --- everything else: PERMANENT ---
+for p in $(aws sagemaker list-model-packages --model-package-group-name $PROJECT --query &quot;ModelPackageSummaryList[].ModelPackageArn&quot; --output text); do
+  aws sagemaker delete-model-package --model-package-name $p; done
+aws sagemaker delete-model-package-group --model-package-group-name $PROJECT
+aws s3 rm s3://$BUCKET --recursive --only-show-errors &amp;&amp; aws s3api delete-bucket --bucket $BUCKET
+aws ecr delete-repository --repository-name $ECR_REPO --force &gt;/dev/null
+aws codebuild delete-project --name ${PROJECT}-image
+aws logs delete-log-group --log-group-name /aws/codebuild/${PROJECT}-image 2&gt;/dev/null || true
+for r in $ROLE_NAME ${PROJECT}-codebuild; do
+  for p in $(aws iam list-role-policies --role-name $r --query PolicyNames --output text); do aws iam delete-role-policy --role-name $r --policy-name $p; done
+  for p in $(aws iam list-attached-role-policies --role-name $r --query &quot;AttachedPolicies[].PolicyArn&quot; --output text); do aws iam detach-role-policy --role-name $r --policy-arn $p; done
+  aws iam delete-role --role-name $r; done
+aws budgets delete-budget --account-id $ACCOUNT_ID --budget-name promptmusic-monthly
+echo &quot;everything deleted&quot;</code></pre></div>
+<div class="code"><div class="code-head"><span>run</span><button class="copy" type="button">Copy</button></div><pre><code class="lang-bash">infra/cleanup.sh          # endpoint, endpoint configs, models, alarm: compute stops
+infra/cleanup.sh --all    # ALSO deletes data, checkpoints, image, registry, roles, budget (permanent)</code></pre></div>
+</section>
+<section id="challenges"><h2>15. Challenges</h2>
+<h3>15.1 Found by the validation run (all fixed in the files above)</h3>
+<table><thead><tr><th>#</th><th>Step</th><th>Symptom (exact)</th><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>V1</td><td>4 IAM</td><td><code>InvalidInputException ... CreateProject operation: Invalid service role</code></td><td>a brand-new IAM role is not visible to CodeBuild for a few minutes</td><td>retry loop in 6; pass the role name</td></tr><tr><td>V2</td><td>6 image</td><td>the <code>pip freeze | grep '^torch=='</code> step exits 1 with no message</td><td>DLC installs torch from a wheel: <code>torch @ file://...</code></td><td><code>pin_torch.py</code> reads <code>importlib.metadata</code></td></tr><tr><td>V3</td><td>6 image</td><td>(no Docker on the laptop)</td><td>Apple silicon + 10 GB base image</td><td>build in CodeBuild, never locally</td></tr><tr><td>V4</td><td>7 prepare</td><td><code>transformers</code> refused to load mT5: <code>... require users to upgrade torch to at least v2.6</code></td><td>CVE fix in transformers; <code>google/mt5-base</code> has no safetensors</td><td>base image <code>pytorch-training:2.6.0-gpu-py312-cu126</code></td></tr><tr><td>V5</td><td>6 tests</td><td><code>test_fluidsynth_output_is_longer_and_cleaner</code>: 3.96 s &lt; 4.45 × 0.9</td><td>Ubuntu's fluidsynth 2.2 stops at the last MIDI event and cuts release tails; macOS 2.6 does not</td><td><code>render.py</code> moves end_of_track 1.5 s later</td></tr><tr><td>V6</td><td>7 prepare</td><td><code>IsADirectoryError: [Errno 21] Is a directory: 'sagemaker'</code></td><td>the folder <code>sagemaker/</code> next to <code>configs/</code> shadowed the config name</td><td><code>config.py</code> uses <code>is_file()</code>; regression test</td></tr><tr><td>V7</td><td>7 prepare</td><td>(found while reading; the first guide was wrong)</td><td>archive's top folder is stripped: MIDI is in <code>dataset/midicaps/</code>, <code>train.json</code> in <code>downloads/</code></td><td>explicit paths in <code>prepare.py</code></td></tr><tr><td>V8</td><td>8 train/eval</td><td><code>RuntimeError: mat1 and mat2 must have the same dtype, but got BFloat16 and Float</code></td><td>bf16 encoder output; generation runs without autocast</td><td>decoder casts memory to its own dtype; regression test</td></tr><tr><td>V9</td><td>11 deploy</td><td><code>The NVIDIA driver on your system is too old (found version 11040)</code> → <code>model loaded on cpu</code></td><td>default hosting AMI = driver 470 / CUDA 11.4</td><td><code>InferenceAmiVersion: al2-ami-sagemaker-inference-gpu-3-1</code></td></tr><tr><td>V10</td><td>8 train</td><td><code>Insufficient capacity error from EC2 while launching instances, retrying!</code> / <code>Training job waiting for capacity</code></td><td>no g5/g6 spot capacity in ap-south-1; on-demand g5/g6 also queued</td><td>fallback order: spot → on-demand → other GPU type; resume from checkpoints</td></tr><tr><td>V11</td><td>11 deploy</td><td><code>InsufficientInstanceCapacity</code>, yet <code>wait endpoint-in-service</code> succeeded</td><td>blue/green needs a 2nd instance; failed update rolls back to InService</td><td><code>deploy.sh</code> verifies the live config; scale idle endpoint to 0 before updating</td></tr><tr><td>V12</td><td>11 deploy</td><td><code>The requested real-time inference instance type ml.g6.xlarge is not supported by one or more ModelPackages</code></td><td>package lists allowed instance types</td><td><code>register.sh</code> lists g5.xlarge, g6.xlarge, g5.2xlarge</td></tr><tr><td>V13</td><td>12 invoke</td><td>a request carrying lyrics sends data from the laptop</td><td>requirement: nothing but code leaves the laptop</td><td><code>lyrics_file</code> resolves inside the image</td></tr><tr><td>V14</td><td>7 prepare</td><td>measured 61 tokens/s, not 40</td><td>the 40 tok/s figure came from the love-song subset only</td><td>duration → tokens is approximate; <code>serve.py</code> caps at 64 s</td></tr><tr><td>V15</td><td>11 deploy</td><td><code>The variant(s) "[AllTraffic]" must be deregistered as scalable targets with Application Auto Scaling before they can be removed or have their instance type updated</code></td><td>autoscaling pins the variant</td><td><code>deploy.sh</code> deregisters first; run <code>autoscale.sh</code> after</td></tr><tr><td>V16</td><td>11 deploy</td><td>g5 and g6 on-demand: <code>InsufficientInstanceCapacity</code> for hours</td><td>regional GPU shortage</td><td><code>deploy.sh</code> tries g5 → g6 → <b>ml.c6i.2xlarge (CPU)</b>. The 51 M decoder makes a sung song in about 60 s on 8 vCPUs, so CPU serving is a valid choice, not only a fallback</td></tr><tr><td>V17</td><td>11 autoscale</td><td>after scale-in the API reports 0 instances, but the old instance still answers requests for several minutes</td><td>instance termination lags the reported count</td><td>do not measure cold start right after a scale-in; wait for the instance's log stream to stop</td></tr></tbody></table>
+<h3>15.2 From the original project (still relevant)</h3>
+<table><thead><tr><th>Challenge</th><th>Lesson</th></tr></thead><tbody><tr><td>Unit tests passed while generation was broken (3 bugs)</td><td>Kept: smoke job + one endpoint request after every image change. In this run the test gate in the image build and the smoke job caught V5, V6 and V8 before any long run.</td></tr><tr><td>Silent <code>strict=False</code> weight loading</td><td>Resume and inference still assert no decoder tensor is missing.</td></tr><tr><td>MidiCaps format surprises (JSON Lines, <code>lmd_full/</code> prefix)</td><td><code>prepare.py</code> reuses the project's loader, never a re-implementation.</td></tr><tr><td>Tempo bugs (0 BPM, reversed unpacking)</td><td>Their regression tests run in every image build.</td></tr><tr><td>Undertrained output (short notes, too many instruments)</td><td><code>arrange</code> stays in the serving path; more training on more data is the real fix.</td></tr><tr><td>No real Tamil singing voice</td><td>Unchanged: pitch-shaped MMS-TTS. The voice is baked into <code>model.tar.gz</code> (non-commercial licence).</td></tr></tbody></table>
+<h3>15.3 Logged training loss was wrong in the original project</h3>
+<p><code>train.py</code> reset <code>running_loss</code> after each log line but divided by <code>batch_idx + 1</code>
+(all batches since the epoch began). So every log line after the first under-reported the loss. Fixed in patch 5.2. In the SageMaker run, train and
+validation loss agree: train 1.80 / validation 1.73 at step 1 000; train 1.11 / validation 0.98 at step 3 000.</p>
+</section>
+<section id="runlog"><h2>16. Validation run log</h2>
+<p>Chronological and unedited, including failures. Use it to know what “normal” looks like.</p>
+<table><thead><tr><th>Time (IST)</th><th>Step</th><th>What happened</th></tr></thead><tbody><tr><td>08:05</td><td>3–4</td><td>budget, bucket, SageMaker role: OK first try</td></tr><tr><td>08:07</td><td>6</td><td>CodeBuild project: <i>Invalid service role</i> ×8 for ~4 min (V1), then OK</td></tr><tr><td>08:11</td><td>6</td><td>build 1 FAILED: torch pin step (V2)</td></tr><tr><td>08:16</td><td>6</td><td>build 2 FAILED: fluidsynth test in the image (V5)</td></tr><tr><td>08:21</td><td>6</td><td>build 3 OK, image v1 pushed (10.7 GB)</td></tr><tr><td>08:33</td><td>7</td><td>prepare 1 FAILED after the 130 s download: config shadowed by folder (V6)</td></tr><tr><td>08:49</td><td>7</td><td>prepare 2: shards + validation OK, mT5 export FAILED: torch &lt; 2.6 (V4); base image → torch 2.6</td></tr><tr><td>09:12</td><td>7</td><td>prepare 3 (2 000 pieces): Completed, validation passed</td></tr><tr><td>09:22</td><td>8</td><td>smoke train 1: 200 steps OK (val 2.62), evaluation FAILED: bf16 vs fp32 (V8)</td></tr><tr><td>09:32</td><td>7</td><td>prepare 20 000 pieces: Completed in 11 min, validation passed</td></tr><tr><td>09:36</td><td>8</td><td>smoke train 2: Completed, 500 s billable, evaluation.json uploaded</td></tr><tr><td>09:46</td><td>8</td><td>full run on g5 spot: no capacity for 30 min (V10) → stopped</td></tr><tr><td>09:47</td><td>9–11</td><td>register v1, endpoint up in 5m40s, but <i>model loaded on cpu</i> (V9) → GPU AMI → <i>model loaded on cuda</i></td></tr><tr><td>10:00</td><td>12</td><td>first song: 17 s</td></tr><tr><td>10:01</td><td>11</td><td>update to image v2: <i>InsufficientInstanceCapacity</i>, rolled back silently (V11)</td></tr><tr><td>10:17</td><td>8</td><td>g6 spot: no capacity → on-demand g5: Pending 20 min, then trains</td></tr><tr><td>10:49</td><td>8</td><td>step 1 000 val 1.73; job stopped on purpose at step 1 150 (resume test)</td></tr><tr><td>10:53–11:59</td><td>8</td><td>resume job: no on-demand capacity on g5, g6, g5.2xlarge, g6e for ~70 min; 4-way race</td></tr><tr><td>12:16</td><td>8</td><td>g6.xlarge wins, <b>resumed at step 1 000</b></td></tr><tr><td>12:46</td><td>8</td><td>step 3 000, val <b>0.98</b>; packaged + evaluated</td></tr><tr><td>12:50–16:00</td><td>11</td><td>deploy final on g5 then g6: <i>InsufficientInstanceCapacity</i> (~30 min each); model package rejects g6 (V12); autoscaling blocks instance-type change</td></tr><tr><td>16:03</td><td>11</td><td>deploy on ml.c6i.2xlarge (CPU): InService</td></tr><tr><td>16:05</td><td>12</td><td>final instrumental 35 s; Tamil sung song 68 s</td></tr><tr><td>16:14</td><td>11–12</td><td>scale to 0, then cold start: COLDSTART</td></tr></tbody></table>
+<h3>Measured numbers</h3>
+<table><thead><tr><th>Measurement</th><th>Value</th></tr></thead><tbody><tr><td>MidiCaps download + extract inside AWS</td><td>130 s per host</td></tr><tr><td>Tokenise 10 000 pieces on one ml.c5.2xlarge (8 cores)</td><td>≈ 260 s</td></tr><tr><td>Token shards, 20 000 pieces</td><td>463 MB, 226 M tokens</td></tr><tr><td>Median piece length / share longer than 2 560 tokens</td><td>14 400 tokens / 87 %</td></tr><tr><td>Measured density</td><td>61 tokens per second of music</td></tr><tr><td>Encoder-only mT5 (safetensors)</td><td>1.0 GB</td></tr><tr><td>Training throughput, bf16, 2 560 tokens, batch 8 × 2</td><td>≈ 65 000 tok/s (A10G), ≈ 46 000 tok/s (L4)</td></tr><tr><td>Peak GPU memory</td><td>9.0 GB (A10G), 9.8 GB (L4)</td></tr><tr><td>Checkpoint with optimizer / packaged model.pt / model.tar.gz</td><td>1.1 GB / 759 MB / 1.2 GB</td></tr><tr><td>Validation loss: laptop demo (100 steps) → smoke (200) → step 1 000 → step 3 000</td><td>3.39 → 2.62 → 1.73 → <b>0.98</b></td></tr><tr><td>Evaluation of the final model (4 prompts)</td><td>validity 100 %, 12 pitch classes, repetition 0.42 (some looping)</td></tr><tr><td>Endpoint create (GPU, 10.7 GB image)</td><td>5 min 40 s</td></tr><tr><td>Model load in the container</td><td>6.9 s</td></tr><tr><td>Song compute on CPU (c6i.2xlarge): instrumental / sung</td><td>17.7 s / 60.5 s</td></tr><tr><td>Cold start from 0 instances (CPU)</td><td>COLDSTART</td></tr></tbody></table>
+</section>
+<section id="checklist"><h2>17. Checklist</h2>
+<ol class="checklist">
+<li>env.sh, budget, bucket, two roles (3–4).</li>
+<li>Copy the project, apply patches 5.1–5.7, commit.</li>
+<li>ECR repo + CodeBuild project; zip, upload, build. Build green = tests green (6).</li>
+<li>Prepare 2 000 pieces, then 20 000; read <code>validation_0.json</code> (7).</li>
+<li>Smoke training; read loss, tok/s, peak memory, evaluation (8).</li>
+<li>Full training (spot, else on-demand; resume if stopped) (8).</li>
+<li>Register + approve (9). Deploy, check <code>model loaded on cuda</code>, autoscale (11).</li>
+<li>Instrumental + Tamil song (12). Listen.</li>
+<li>Scale to 0 or <code>infra/cleanup.sh</code> (14).</li>
+</ol>
+</section>
+</main>
+</div>
+<script>
+(function () {
+  // copy buttons
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.closest('.code').querySelector('code').innerText;
+      var done = function () { btn.textContent = 'Copied'; btn.classList.add('ok');
+        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1400); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+  });
+  // step checkboxes, remembered per browser
+  var KEY = 'pm-sagemaker-steps';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[data-step]'));
+  function refresh() {
+    var n = 0;
+    boxes.forEach(function (b) { var s = b.closest('section'); s.classList.toggle('is-done', b.checked); if (b.checked) n++; });
+    document.getElementById('prog-label').textContent = n + ' of ' + boxes.length + ' steps done';
+    document.getElementById('prog-bar').style.width = (boxes.length ? 100 * n / boxes.length : 0) + '%';
+  }
+  boxes.forEach(function (b) {
+    b.checked = !!state[b.dataset.step];
+    b.addEventListener('change', function () {
+      state[b.dataset.step] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+      refresh();
+    });
+  });
+  refresh();
+  // theme toggle
+  var root = document.documentElement;
+  try { var t = localStorage.getItem('pm-theme'); if (t) root.dataset.theme = t; } catch (e) {}
+  document.getElementById('theme').addEventListener('click', function () {
+    var dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('pm-theme', root.dataset.theme); } catch (e) {}
+  });
+  // active section in the TOC
+  var links = {};
+  document.querySelectorAll('#toc a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) {
+        Object.values(links).forEach(function (a) { a.classList.remove('active'); });
+        if (links[e.target.id]) links[e.target.id].classList.add('active'); } });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    document.querySelectorAll('main section').forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>

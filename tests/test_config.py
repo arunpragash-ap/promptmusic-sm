@@ -123,3 +123,13 @@ def test_default_config_stays_on_laptop_budget():
     assert dec["d_model"] == 512
     assert dec["nhead"] == 8
     assert dec["dim_feedforward"] == 2048
+
+
+def test_directory_with_config_name_does_not_shadow_config(tmp_path, monkeypatch):
+    """Regression: /opt/program/sagemaker/ (code) shadowed configs/sagemaker.yaml."""
+    from promptmusic.config import Config
+
+    (tmp_path / "smoke").mkdir()
+    monkeypatch.chdir(tmp_path)
+    cfg = Config.load("smoke")
+    assert str(cfg.source).endswith("smoke.yaml")

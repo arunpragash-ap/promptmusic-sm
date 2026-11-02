@@ -267,13 +267,15 @@ class Config:
             return cls(DEFAULTS, source="defaults")
 
         path = Path(source)
-        if not path.is_absolute() and not path.exists():
+        # is_file(), not exists(): a *directory* with the config's name in the
+        # working dir (e.g. sagemaker/ next to configs/) must not shadow it.
+        if not path.is_absolute() and not path.is_file():
             candidate = CONFIGS_DIR / f"{source}.yaml"
-            if candidate.exists():
+            if candidate.is_file():
                 path = candidate
-            elif (CONFIGS_DIR / source).exists():
+            elif (CONFIGS_DIR / source).is_file():
                 path = CONFIGS_DIR / source
-        if not path.exists():
+        if not path.is_file():
             raise FileNotFoundError(f"config not found: {source}")
 
         with open(path, encoding="utf-8") as fh:

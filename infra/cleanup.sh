@@ -8,9 +8,9 @@ aws application-autoscaling deregister-scalable-target --service-namespace sagem
   --scalable-dimension sagemaker:variant:DesiredInstanceCount 2>/dev/null || true
 aws cloudwatch delete-alarms --alarm-names $EP-has-backlog
 aws sagemaker delete-endpoint --endpoint-name $EP 2>/dev/null || true
-for c in $(aws sagemaker list-endpoint-configs --name-contains pm-epc --query "EndpointConfigs[].EndpointConfigName" --output text); do
+for c in $(aws sagemaker list-endpoint-configs --name-contains pm- --query "EndpointConfigs[].EndpointConfigName" --output text); do
   aws sagemaker delete-endpoint-config --endpoint-config-name $c; done
-for m in $(aws sagemaker list-models --name-contains pm-model --query "Models[].ModelName" --output text); do
+for m in $(aws sagemaker list-models --name-contains pm- --query "Models[].ModelName" --output text); do
   aws sagemaker delete-model --model-name $m; done
 echo "running jobs (should be empty):"
 aws sagemaker list-training-jobs --status-equals InProgress --query "TrainingJobSummaries[].TrainingJobName" --output text

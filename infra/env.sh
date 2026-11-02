@@ -9,5 +9,5 @@ export ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}
 export ECR_REPO=${PROJECT}
 export IMAGE_TAG=${IMAGE_TAG:-v1}
 export IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}
-export BASE_IMAGE=763104351884.dkr.ecr.${AWS_REGION}.amazonaws.com/pytorch-training:2.5.1-gpu-py311-cu124-ubuntu22.04-sagemaker
+export BASE_IMAGE=763104351884.dkr.ecr.${AWS_REGION}.amazonaws.com/pytorch-training:2.6.0-gpu-py312-cu126-ubuntu22.04-sagemaker
 export STAMP=${STAMP:-$(date +%Y%m%d-%H%M%S)}

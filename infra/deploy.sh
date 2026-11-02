@@ -7,7 +7,7 @@
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 PKG=$1; EP=${EP:-${PROJECT}-async}
-INSTANCE_TYPES=${INSTANCE_TYPES:-"ml.g5.xlarge ml.g6.xlarge"}
+INSTANCE_TYPES=${INSTANCE_TYPES:-"ml.g5.xlarge ml.g6.xlarge ml.c6i.2xlarge"}   # GPU first, CPU last
 RID=endpoint/$EP/variant/AllTraffic; DIM=sagemaker:variant:DesiredInstanceCount
 
 EXISTS=0; aws sagemaker describe-endpoint --endpoint-name $EP >/dev/null 2>&1 && EXISTS=1
@@ -23,11 +23,12 @@ for IT in $INSTANCE_TYPES; do
   NAME=pm-$(date +%Y%m%d-%H%M%S)
   aws sagemaker create-model --model-name $NAME --execution-role-arn $ROLE_ARN \
     --primary-container ModelPackageName=$PKG >/dev/null
-  # InferenceAmiVersion: the default hosting AMI has driver 470 (CUDA 11.4); torch 2.6 needs 12.x
+  # InferenceAmiVersion: the default GPU hosting AMI has driver 470 (CUDA 11.4); torch 2.6
+  # needs 12.x. GPU types only - CPU instances reject a GPU AMI.
+  AMI=""; case $IT in ml.g*|ml.p*) AMI="\"InferenceAmiVersion\":\"al2-ami-sagemaker-inference-gpu-3-1\",";; esac
   aws sagemaker create-endpoint-config --endpoint-config-name $NAME \
     --production-variants "[{\"VariantName\":\"AllTraffic\",\"ModelName\":\"$NAME\",
-       \"InstanceType\":\"$IT\",\"InitialInstanceCount\":1,
-       \"InferenceAmiVersion\":\"al2-ami-sagemaker-inference-gpu-3-1\",
+       \"InstanceType\":\"$IT\",\"InitialInstanceCount\":1, $AMI
        \"ModelDataDownloadTimeoutInSeconds\":1200,\"ContainerStartupHealthCheckTimeoutInSeconds\":1200}]" \
     --async-inference-config "{\"OutputConfig\":{\"S3OutputPath\":\"s3://$BUCKET/async/out/\",
        \"S3FailurePath\":\"s3://$BUCKET/async/fail/\"},

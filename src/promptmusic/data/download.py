@@ -217,9 +217,15 @@ def download_file(
     resume: bool = True,
     verify: bool = True,
     timeout: int = 60,
-    max_retries: int = 3,
+    max_retries: int = 5,
+    hash_retries: int = 2,
 ) -> Path:
     """Download one file, resuming and verifying as needed.
+
+    A connection that closes early is treated as a network error and resumed;
+    a server that ignores the Range header restarts the file instead of being
+    appended to it; a checksum mismatch re-downloads from scratch up to
+    ``hash_retries`` times.
 
     Returns the local path. Raises on checksum mismatch after retries.
     """
@@ -246,6 +252,9 @@ def download_file(
             headers = {"User-Agent": "promptmusic/0.1 (+https://github.com/)"}
             mode = "wb"
             existing = part.stat().st_size if (resume and part.exists()) else 0
+            if spec.size and existing >= spec.size:
+                part.unlink(missing_ok=True)  # oversized/complete-but-unrenamed part: start over
+                existing = 0
             if existing:
                 headers["Range"] = f"bytes={existing}-"
                 mode = "ab"
@@ -253,6 +262,10 @@ def download_file(
 
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if existing and getattr(resp, "status", 200) != 206:
+                    # Range ignored: the body is the whole file, so overwrite, never append.
+                    LOG.warning("server ignored resume for %s - restarting", dest.name)
+                    existing, mode = 0, "wb"
                 total = spec.size or 0
                 if resp.headers.get("Content-Length"):
                     total = int(resp.headers["Content-Length"]) + existing
@@ -272,6 +285,10 @@ def download_file(
                             )
                             # Only log every ~5% to keep the output readable.
                             LOG.handlers[0].flush()
+            got = part.stat().st_size
+            if spec.size and got != spec.size:
+                # Connection closed early without an exception: resume on the next attempt.
+                raise ConnectionError(f"incomplete download of {dest.name}: {got} of {spec.size} bytes")
             part.replace(dest)
             break
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
@@ -286,6 +303,12 @@ def download_file(
         digest = sha256_file(dest, progress=True)
         if digest != spec.sha256:
             dest.unlink(missing_ok=True)
+            if hash_retries > 0:
+                LOG.warning("SHA-256 mismatch for %s (got %s) - downloading again", dest.name, digest)
+                return download_file(
+                    spec, dest_root, resume=False, verify=verify, timeout=timeout,
+                    max_retries=max_retries, hash_retries=hash_retries - 1,
+                )
             raise RuntimeError(
                 f"SHA-256 mismatch for {spec.filename}\n  expected {spec.sha256}\n  got      {digest}"
             )

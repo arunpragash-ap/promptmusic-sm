@@ -22,7 +22,7 @@ COPY sagemaker/pin_torch.py /tmp/pin_torch.py
 RUN python /tmp/pin_torch.py > /tmp/constraints.txt \
  && cat /tmp/constraints.txt \
  && pip install --no-cache-dir -c /tmp/constraints.txt -e ".[analysis]" \
-      "transformers>=4.44,<5" sentencepiece flask==3.0.3 gunicorn==22.0.0 \
+      "transformers>=4.44,<5" sentencepiece==0.2.2 flask==3.0.3 gunicorn==22.0.0 \
       pytest pytest-timeout \
  && python -c "import torch, promptmusic; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
 

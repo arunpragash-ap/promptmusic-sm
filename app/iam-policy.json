@@ -1,0 +1,36 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadRequests",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::sagemaker-promptmusic-<ACCOUNT_ID>/async/in/*"
+    },
+    {
+      "Sid": "ReadResults",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::sagemaker-promptmusic-<ACCOUNT_ID>/async/out/*",
+        "arn:aws:s3:::sagemaker-promptmusic-<ACCOUNT_ID>/async/fail/*"
+      ]
+    },
+    {
+      "Sid": "UseTheEndpoint",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:DescribeEndpoint",
+        "sagemaker:InvokeEndpointAsync",
+        "sagemaker:UpdateEndpointWeightsAndCapacities"
+      ],
+      "Resource": "arn:aws:sagemaker:ap-south-1:<ACCOUNT_ID>:endpoint/promptmusic-async"
+    },
+    {
+      "Sid": "ReadEndpointConfig",
+      "Effect": "Allow",
+      "Action": "sagemaker:DescribeEndpointConfig",
+      "Resource": "arn:aws:sagemaker:ap-south-1:<ACCOUNT_ID>:endpoint-config/pm-*"
+    }
+  ]
+}

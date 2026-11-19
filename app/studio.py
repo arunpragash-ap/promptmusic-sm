@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import time
@@ -36,6 +37,9 @@ from urllib.parse import urlparse
 import boto3
 import gradio as gr
 from botocore.exceptions import ClientError
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+LOG = logging.getLogger("studio")
 
 REGION = os.environ.get("AWS_REGION", "ap-south-1")
 ENDPOINT = os.environ.get("PM_ENDPOINT", "promptmusic-async")
@@ -152,7 +156,17 @@ def build_request(prompt, duration, seed, temperature, top_p, language, lyrics, 
     return req
 
 
-def generate(prompt, duration, seed, temperature, top_p, language, lyrics, sing):
+def generate(*args):
+    """Wraps _generate so every failure is logged with a traceback AND shown on the page."""
+    try:
+        yield from _generate(*args)
+    except Exception as exc:  # noqa: BLE001
+        LOG.exception("generate failed")
+        msg = exc.response["Error"]["Message"] if isinstance(exc, ClientError) else str(exc)
+        yield f"❌ {type(exc).__name__}: {msg}", None, None, None
+
+
+def _generate(prompt, duration, seed, temperature, top_p, language, lyrics, sing):
     """Gradio generator: yields (status, audio, files, meta) as the request progresses."""
     if not prompt or not prompt.strip():
         yield "⚠️ Write a prompt first.", None, None, None
@@ -171,6 +185,7 @@ def generate(prompt, duration, seed, temperature, top_p, language, lyrics, sing)
         ContentType="application/json", InvocationTimeoutSeconds=1800,
     )
     out_uri, fail_uri = resp["OutputLocation"], resp.get("FailureLocation", "")
+    LOG.info("request %s -> %s", key, out_uri)
 
     t0 = time.time()
     waking = n == 0
@@ -198,6 +213,7 @@ def generate(prompt, duration, seed, temperature, top_p, language, lyrics, sing)
     blob = s3.get_object(Bucket=b, Key=k)["Body"].read()
     folder = OUT_ROOT / f"{datetime.now():%Y%m%d-%H%M%S}_{_slug(req['prompt'])}"
     folder.mkdir(parents=True, exist_ok=True)
+    LOG.info("song ready: %s", folder)
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         z.extractall(folder)
     (folder / "request.json").write_text(json.dumps(req, ensure_ascii=False, indent=2))
@@ -263,4 +279,5 @@ if __name__ == "__main__":
           f"listen={HOST}:{PORT} login={'on' if USERS else 'off'}")
     build_ui().queue(default_concurrency_limit=2).launch(
         server_name=HOST, server_port=PORT, auth=USERS or None, inbrowser=not public,
+        show_error=True, allowed_paths=[str(OUT_ROOT)],
     )

@@ -16,7 +16,7 @@ if [ $EXISTS = 1 ]; then
   #  ... have their instance type updated"
   aws application-autoscaling deregister-scalable-target --service-namespace sagemaker \
     --resource-id $RID --scalable-dimension $DIM 2>/dev/null && echo "autoscaling removed (re-run infra/autoscale.sh)" || true
-  aws cloudwatch delete-alarms --alarm-names $EP-has-backlog
+  aws cloudwatch delete-alarms --alarm-names $EP-has-backlog $EP-idle
 fi
 
 for IT in $INSTANCE_TYPES; do

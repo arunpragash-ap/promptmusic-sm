@@ -6,7 +6,7 @@ EP=${EP:-${PROJECT}-async}
 aws application-autoscaling deregister-scalable-target --service-namespace sagemaker \
   --resource-id endpoint/$EP/variant/AllTraffic \
   --scalable-dimension sagemaker:variant:DesiredInstanceCount 2>/dev/null || true
-aws cloudwatch delete-alarms --alarm-names $EP-has-backlog
+aws cloudwatch delete-alarms --alarm-names $EP-has-backlog $EP-idle
 aws sagemaker delete-endpoint --endpoint-name $EP 2>/dev/null || true
 for c in $(aws sagemaker list-endpoint-configs --name-contains pm- --query "EndpointConfigs[].EndpointConfigName" --output text); do
   aws sagemaker delete-endpoint-config --endpoint-config-name $c; done
